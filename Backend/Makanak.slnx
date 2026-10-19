@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Makanak.Api/Makanak.Api.csproj" />
+  <Project Path="Makanak.Application/Makanak.Application.csproj" />
+  <Project Path="Makanak.Domain/Makanak.Domain.csproj" />
+  <Project Path="Makanak.Infrastructure/Makanak.Infrastructure.csproj" />
+</Solution>
