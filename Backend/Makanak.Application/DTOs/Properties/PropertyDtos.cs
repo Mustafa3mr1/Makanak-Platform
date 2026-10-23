@@ -6,8 +6,8 @@ public record CreatePropertyRequestDto(
     string Title,
     string Description,
     decimal Price,
-    double Latitude,
-    double Longitude
+    string City,
+    string Address
 );
 
 public record PropertyDto(
@@ -17,7 +17,18 @@ public record PropertyDto(
     string Description,
     decimal Price,
     PropertyStatus Status,
-    double Latitude,
-    double Longitude,
+    string City,
+    string Address,
     DateTime CreatedAtUtc
 );
+
+/// <summary>
+/// DTO representing a single property image (FR-04).
+/// </summary>
+public record PropertyImageDto(
+    Guid Id,
+    Guid PropertyId,
+    string ImageUrl,
+    bool IsPrimary
+);
+

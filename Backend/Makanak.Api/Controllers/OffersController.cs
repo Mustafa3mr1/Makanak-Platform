@@ -5,7 +5,8 @@ using Makanak.Application.DTOs.Offers;
 namespace Makanak.Api.Controllers;
 
 /// <summary>
-/// Negotiation Engine API: Handles real-time property offers, counter-offers, acceptances, and rejections.
+/// Negotiation Engine API: Handles property offers, counter-offers, acceptances, and rejections.
+/// Every state transition is recorded in NegotiationHistory (FR-09).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -14,21 +15,18 @@ public class OffersController : ControllerBase
 {
     private readonly INegotiationService _negotiationService;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ISignalRNotificationService _notificationService;
 
     public OffersController(
         INegotiationService negotiationService,
-        IUnitOfWork unitOfWork,
-        ISignalRNotificationService notificationService)
+        IUnitOfWork unitOfWork)
     {
         _negotiationService = negotiationService;
         _unitOfWork = unitOfWork;
-        _notificationService = notificationService;
     }
 
     /// <summary>
     /// Creates an initial offer on an available property.
-    /// ARCHITECTURAL NOTE: Dispatches real-time alerts via ISignalRNotificationService to the property owner.
+    /// Appends a NegotiationHistory record with ActionType=Submitted (FR-09).
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(OfferDto), StatusCodes.Status201Created)]
@@ -45,9 +43,8 @@ public class OffersController : ControllerBase
 
     /// <summary>
     /// Submits a counter-offer from Property Owner or Seeker.
-    /// ARCHITECTURAL NOTE: 
-    /// Enforces the strict negotiation invariant: RoundCount cannot exceed 2.
-    /// Fires real-time SignalR notifications upon successful persistence.
+    /// Enforces the strict domain invariant: RoundCount cannot exceed 2.
+    /// Appends a NegotiationHistory record with ActionType=Countered (FR-09).
     /// </summary>
     [HttpPut("{id:guid}/counter")]
     [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]
@@ -65,13 +62,11 @@ public class OffersController : ControllerBase
 
     /// <summary>
     /// Accepts a specific offer under strict Unit of Work transactional isolation.
-    /// ARCHITECTURAL NOTE (ATOMIC TRANSACTION & SIGNALR LIFECYCLE):
-    /// 1. Transaction Start: Begins an isolated DbContext transaction via IUnitOfWork.
-    /// 2. Offer Acceptance: Sets the target offer state to 'Accepted'.
-    /// 3. Property Lock: Updates the Property Status to 'Unavailable'.
-    /// 4. Competing Rejection: Concurrently bulk-rejects all other pending offers for this property.
-    /// 5. Transaction Commit: Persists all state mutations atomically (all-or-nothing).
-    /// 6. Post-Commit SignalR: Dispatches real-time broadcast alerts to the Property group via SignalR.
+    /// Atomic transaction:
+    /// 1. Sets the target offer state to Accepted.
+    /// 2. Updates Property Status to Unavailable.
+    /// 3. Bulk-rejects all other pending offers for this property.
+    /// 4. Appends NegotiationHistory rows for all actions (FR-09).
     /// </summary>
     [HttpPut("{id:guid}/accept")]
     [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]
@@ -88,7 +83,7 @@ public class OffersController : ControllerBase
 
     /// <summary>
     /// Rejects an offer explicitly.
-    /// ARCHITECTURAL NOTE: Dispatches real-time SignalR alerts to the offer author.
+    /// Appends a NegotiationHistory record with ActionType=Rejected (FR-09).
     /// </summary>
     [HttpPut("{id:guid}/reject")]
     [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]

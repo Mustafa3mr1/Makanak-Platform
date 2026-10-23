@@ -5,7 +5,7 @@ using Makanak.Application.DTOs.Properties;
 namespace Makanak.Api.Controllers;
 
 /// <summary>
-/// Geospatial Property Management Controller for property listings and nearby searches.
+/// Property Management API: CRUD for property listings (FR-01, FR-04 MVP scope).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -22,7 +22,7 @@ public class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// Lists a new real estate property with NetTopologySuite geospatial Point coordinates (SRID 4326).
+    /// Creates a new property listing with City and Address location fields (MVP scope).
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(PropertyDto), StatusCodes.Status201Created)]
@@ -40,28 +40,14 @@ public class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// Performs a high-performance spatial proximity query finding available properties within a radius (e.g. 5km).
+    /// Returns all property listings ordered by creation date (newest first).
     /// </summary>
-    /// <param name="lat">User Latitude in WGS 84</param>
-    /// <param name="lng">User Longitude in WGS 84</param>
-    /// <param name="radiusKm">Search radius in Kilometers (default: 5.0 km)</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    [HttpGet("nearby")]
+    [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<PropertyDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetNearbyProperties(
-        [FromQuery] double lat,
-        [FromQuery] double lng,
-        [FromQuery] double radiusKm = 5.0,
-        CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetAllProperties(CancellationToken cancellationToken)
     {
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
-        {
-            return BadRequest("Latitude must be between -90 and 90, and Longitude between -180 and 180.");
-        }
-
-        var nearbyProperties = await _propertyService.GetNearbyPropertiesAsync(lat, lng, radiusKm, cancellationToken);
-        return Ok(nearbyProperties);
+        var properties = await _propertyService.GetAllPropertiesAsync(cancellationToken);
+        return Ok(properties);
     }
 
     /// <summary>
