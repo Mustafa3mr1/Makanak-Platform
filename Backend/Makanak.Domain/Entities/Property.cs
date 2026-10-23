@@ -1,11 +1,11 @@
-using NetTopologySuite.Geometries;
 using Makanak.Domain.Enums;
 using Makanak.Domain.Exceptions;
 
 namespace Makanak.Domain.Entities;
 
 /// <summary>
-/// Core real estate property entity with geospatial spatial coordinates and optimistic concurrency.
+/// Core real estate property entity. Uses standard string fields for location (MVP scope).
+/// Optimistic concurrency enforced via RowVersion (NFR-03).
 /// </summary>
 public class Property
 {
@@ -22,12 +22,17 @@ public class Property
     public PropertyStatus Status { get; set; } = PropertyStatus.Available;
 
     /// <summary>
-    /// Geospatial coordinates (Longitude, Latitude) stored as a Point with SRID 4326 (WGS 84).
+    /// City where the property is located (replaces geospatial Point – MVP scope).
     /// </summary>
-    public Point Location { get; set; } = null!;
+    public string City { get; set; } = string.Empty;
 
     /// <summary>
-    /// Concurrency token for optimistic locking during concurrent offer operations.
+    /// Full street address of the property.
+    /// </summary>
+    public string Address { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Concurrency token for optimistic locking during concurrent offer operations (NFR-03).
     /// </summary>
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
@@ -39,6 +44,11 @@ public class Property
     public virtual ApplicationUser Owner { get; set; } = null!;
 
     public virtual ICollection<Offer> Offers { get; set; } = new List<Offer>();
+
+    /// <summary>
+    /// Images associated with this property (FR-04).
+    /// </summary>
+    public virtual ICollection<PropertyImage> Images { get; set; } = new List<PropertyImage>();
 
     // Domain Methods
     public void MarkAsUnavailable()

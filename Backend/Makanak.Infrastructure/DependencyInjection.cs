@@ -14,12 +14,12 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection") 
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? "Server=(localdb)\\mssqllocaldb;Database=MakanakDb;Trusted_Connection=True;MultipleActiveResultSets=true";
 
-        // EF Core with SQL Server + NetTopologySuite for spatial queries
+        // EF Core with SQL Server (no spatial extensions in MVP scope)
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlServer(connectionString, x => x.UseNetTopologySuite()));
+            options.UseSqlServer(connectionString));
 
         // ASP.NET Core Identity with Guid PK
         services.AddIdentityCore<ApplicationUser>(options =>
@@ -38,9 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IOfferRepository, OfferRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-        // SignalR & Domain Services
-        services.AddSignalR();
-        services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();
+        // Domain Services
         services.AddScoped<INegotiationService, NegotiationService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -48,3 +46,4 @@ public static class DependencyInjection
         return services;
     }
 }
+

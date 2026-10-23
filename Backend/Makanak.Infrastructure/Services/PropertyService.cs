@@ -1,5 +1,3 @@
-using NetTopologySuite;
-using NetTopologySuite.Geometries;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Properties;
 using Makanak.Domain.Entities;
@@ -10,12 +8,10 @@ namespace Makanak.Infrastructure.Services;
 public class PropertyService : IPropertyService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly GeometryFactory _geometryFactory;
 
     public PropertyService(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        _geometryFactory = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326);
     }
 
     public async Task<PropertyDto> CreatePropertyAsync(
@@ -23,9 +19,6 @@ public class PropertyService : IPropertyService
         Guid ownerId,
         CancellationToken cancellationToken = default)
     {
-        // NetTopologySuite uses (Longitude, Latitude) for coordinate order
-        var location = _geometryFactory.CreatePoint(new Coordinate(request.Longitude, request.Latitude));
-
         var property = new Property
         {
             OwnerId = ownerId,
@@ -33,7 +26,8 @@ public class PropertyService : IPropertyService
             Description = request.Description,
             Price = request.Price,
             Status = PropertyStatus.Available,
-            Location = location
+            City = request.City,
+            Address = request.Address
         };
 
         await _unitOfWork.Properties.AddAsync(property, cancellationToken);
@@ -48,13 +42,9 @@ public class PropertyService : IPropertyService
         return property == null ? null : MapToDto(property);
     }
 
-    public async Task<IReadOnlyList<PropertyDto>> GetNearbyPropertiesAsync(
-        double latitude,
-        double longitude,
-        double radiusInKm,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PropertyDto>> GetAllPropertiesAsync(CancellationToken cancellationToken = default)
     {
-        var properties = await _unitOfWork.Properties.GetNearbyPropertiesAsync(latitude, longitude, radiusInKm, cancellationToken);
+        var properties = await _unitOfWork.Properties.GetAllAsync(cancellationToken);
         return properties.Select(MapToDto).ToList();
     }
 
@@ -65,8 +55,9 @@ public class PropertyService : IPropertyService
         p.Description,
         p.Price,
         p.Status,
-        p.Location.Y, // Latitude
-        p.Location.X, // Longitude
+        p.City,
+        p.Address,
         p.CreatedAtUtc
     );
 }
+

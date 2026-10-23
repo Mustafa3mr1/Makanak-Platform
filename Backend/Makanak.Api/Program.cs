@@ -1,27 +1,25 @@
 using Makanak.Infrastructure;
-using Makanak.Infrastructure.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Controllers
 builder.Services.AddControllers();
 
-// Add Clean Architecture Infrastructure (EF Core SqlServer + NetTopologySuite, Identity, SignalR, Repositories, Services)
+// Add Clean Architecture Infrastructure (EF Core SqlServer, Identity, Repositories, Services)
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Add Swagger Documentation
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configure CORS for web clients and SignalR
+// Configure CORS for web clients
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
         policy.SetIsOriginAllowed(_ => true)
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowAnyHeader();
     });
 });
 
@@ -44,8 +42,6 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Route Controllers and SignalR Hubs
 app.MapControllers();
-app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();
