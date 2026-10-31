@@ -1,69 +1,88 @@
-using Microsoft.AspNetCore.Mvc;
+using Makanak.API.Extensions;
 using Makanak.Application.Common.Interfaces;
-using Makanak.Application.DTOs.Properties;
+using Makanak.Application.Common.Models;
+using Makanak.Application.DTOs.Property;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
-namespace Makanak.Api.Controllers;
+namespace Makanak.API.Controllers;
 
-/// <summary>
-/// Property Management API: CRUD for property listings (FR-01, FR-04 MVP scope).
-/// </summary>
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/properties")]
 [Produces("application/json")]
 public class PropertiesController : ControllerBase
 {
-    private readonly IPropertyService _propertyService;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IPropertyService _properties;
 
-    public PropertiesController(IPropertyService propertyService, IUnitOfWork unitOfWork)
-    {
-        _propertyService = propertyService;
-        _unitOfWork = unitOfWork;
-    }
+    public PropertiesController(IPropertyService properties) => _properties = properties;
 
-    /// <summary>
-    /// Creates a new property listing with City and Address location fields (MVP scope).
-    /// </summary>
     [HttpPost]
-    [ProducesResponseType(typeof(PropertyDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> CreateProperty(
-        [FromBody] CreatePropertyRequestDto request,
-        [FromHeader(Name = "X-User-Id")] Guid? headerOwnerId,
-        CancellationToken cancellationToken)
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<ActionResult<PropertyDetailDto>> Create([FromBody] CreatePropertyRequest request)
     {
-        // Owner ID retrieved from Claims/Auth context or fallback demo header
-        var ownerId = headerOwnerId ?? Guid.NewGuid();
-
-        var created = await _propertyService.CreatePropertyAsync(request, ownerId, cancellationToken);
-        return CreatedAtAction(nameof(GetPropertyById), new { id = created.Id }, created);
+        var created = await _properties.CreateAsync(User.GetUserId(), request);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
-    /// <summary>
-    /// Returns all property listings ordered by creation date (newest first).
-    /// </summary>
+ 
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<PropertyDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAllProperties(CancellationToken cancellationToken)
+    [AllowAnonymous]
+    public async Task<ActionResult<PagedResult<PropertyListItemDto>>> Search([FromQuery] PropertySearchQuery query)
+        => Ok(await _properties.SearchAsync(query));
+
+
+    [HttpGet("{id:guid}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PropertyDetailDto>> GetById(Guid id)
+        => Ok(await _properties.GetByIdAsync(id, User.TryGetUserId(), User.IsInRole(RoleNames.Admin)));
+
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<ActionResult<PropertyDetailDto>> Update(Guid id, [FromBody] UpdatePropertyRequest request)
+        => Ok(await _properties.UpdateAsync(id, User.GetUserId(), request));
+
+    [HttpPut("{id:guid}/status")]
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<ActionResult<PropertyDetailDto>> ChangeStatus(Guid id, [FromBody] ChangePropertyStatusRequest request)
+        => Ok(await _properties.ChangeStatusAsync(id, User.GetUserId(), User.IsInRole(RoleNames.Admin), request));
+
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = $"{RoleNames.Owner},{RoleNames.Admin}")]
+
+    public async Task<IActionResult> Delete(Guid id)
     {
-        var properties = await _propertyService.GetAllPropertiesAsync(cancellationToken);
-        return Ok(properties);
+        await _properties.DeleteAsync(id, User.GetUserId(), User.IsInRole(RoleNames.Admin));
+        return NoContent();
     }
 
-    /// <summary>
-    /// Retrieves a single property by its unique Guid identifier.
-    /// </summary>
-    [HttpGet("{id:guid}")]
-    [ProducesResponseType(typeof(PropertyDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetPropertyById([FromRoute] Guid id, CancellationToken cancellationToken)
+    [HttpPost("{id:guid}/images")]
+    [Authorize(Roles = RoleNames.Owner)]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(ImageRules.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ImageRules.MaxRequestBytes)]
+    public async Task<ActionResult<PropertyImageDto>> UploadImage(Guid id, IFormFile file)
     {
-        var property = await _propertyService.GetPropertyByIdAsync(id, cancellationToken);
-        if (property == null)
-        {
-            return NotFound($"Property with Id '{id}' not found.");
-        }
+        await using var stream = file.OpenReadStream();
+        var image = await _properties.AddImageAsync(id, User.GetUserId(), stream, file.Length);
+        return CreatedAtAction(nameof(GetById), new { id }, image);
+    }
 
-        return Ok(property);
+
+    [HttpPut("{id:guid}/images/{imageId:guid}/primary")]
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<IActionResult> SetPrimaryImage(Guid id, Guid imageId)
+    {
+        await _properties.SetPrimaryImageAsync(id, imageId, User.GetUserId());
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}/images/{imageId:guid}")]
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<IActionResult> DeleteImage(Guid id, Guid imageId)
+    {
+        await _properties.DeleteImageAsync(id, imageId, User.GetUserId());
+        return NoContent();
     }
 }

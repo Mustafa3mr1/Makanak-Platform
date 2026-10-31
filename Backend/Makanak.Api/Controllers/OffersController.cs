@@ -1,100 +1,63 @@
-using Microsoft.AspNetCore.Mvc;
+using Makanak.API.Extensions;
 using Makanak.Application.Common.Interfaces;
-using Makanak.Application.DTOs.Offers;
+using Makanak.Application.Common.Models;
+using Makanak.Application.DTOs.Offer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
-namespace Makanak.Api.Controllers;
+namespace Makanak.API.Controllers;
 
-/// <summary>
-/// Negotiation Engine API: Handles property offers, counter-offers, acceptances, and rejections.
-/// Every state transition is recorded in NegotiationHistory (FR-09).
-/// </summary>
 [ApiController]
-[Route("api/[controller]")]
 [Produces("application/json")]
+[Authorize]
 public class OffersController : ControllerBase
 {
-    private readonly INegotiationService _negotiationService;
-    private readonly IUnitOfWork _unitOfWork;
+    private const string Participants = $"{RoleNames.BuyerTenant},{RoleNames.Owner}";
+    private readonly IOfferService _offers;
 
-    public OffersController(
-        INegotiationService negotiationService,
-        IUnitOfWork unitOfWork)
+    public OffersController(IOfferService offers) => _offers = offers;
+
+    [HttpPost("api/properties/{propertyId:guid}/offers")]
+    [Authorize(Roles = RoleNames.BuyerTenant)]
+    public async Task<ActionResult<OfferDetailDto>> Submit(Guid propertyId, [FromBody] SubmitOfferRequest request)
     {
-        _negotiationService = negotiationService;
-        _unitOfWork = unitOfWork;
+        var offer = await _offers.SubmitAsync(propertyId, User.GetUserId(), request);
+        return CreatedAtAction(nameof(GetById), new { offerId = offer.Id }, offer);
     }
 
-    /// <summary>
-    /// Creates an initial offer on an available property.
-    /// Appends a NegotiationHistory record with ActionType=Submitted (FR-09).
-    /// </summary>
-    [HttpPost]
-    [ProducesResponseType(typeof(OfferDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> CreateInitialOffer(
-        [FromBody] CreateOfferRequestDto request,
-        [FromHeader(Name = "X-User-Id")] Guid? headerSeekerId,
-        CancellationToken cancellationToken)
-    {
-        var seekerId = headerSeekerId ?? Guid.NewGuid();
-        var offer = await _negotiationService.CreateInitialOfferAsync(request, seekerId, cancellationToken);
-        return CreatedAtAction(nameof(CreateInitialOffer), new { id = offer.Id }, offer);
-    }
+    [HttpGet("api/offers/{offerId:guid}")]
+    public async Task<ActionResult<OfferDetailDto>> GetById(Guid offerId)
+        => Ok(await _offers.GetByIdAsync(offerId, User.GetUserId(), User.IsInRole(RoleNames.Admin)));
 
-    /// <summary>
-    /// Submits a counter-offer from Property Owner or Seeker.
-    /// Enforces the strict domain invariant: RoundCount cannot exceed 2.
-    /// Appends a NegotiationHistory record with ActionType=Countered (FR-09).
-    /// </summary>
-    [HttpPut("{id:guid}/counter")]
-    [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> CounterOffer(
-        [FromRoute] Guid id,
-        [FromBody] CounterOfferRequestDto request,
-        [FromHeader(Name = "X-User-Id")] Guid? headerActorId,
-        CancellationToken cancellationToken)
-    {
-        var actorId = headerActorId ?? Guid.NewGuid();
-        var updatedOffer = await _negotiationService.CounterOfferAsync(id, request, actorId, cancellationToken);
-        return Ok(updatedOffer);
-    }
+    [HttpGet("api/offers/{offerId:guid}/history")]
+    public async Task<ActionResult<IReadOnlyList<NegotiationHistoryDto>>> GetHistory(Guid offerId)
+        => Ok(await _offers.GetHistoryAsync(offerId, User.GetUserId(), User.IsInRole(RoleNames.Admin)));
 
-    /// <summary>
-    /// Accepts a specific offer under strict Unit of Work transactional isolation.
-    /// Atomic transaction:
-    /// 1. Sets the target offer state to Accepted.
-    /// 2. Updates Property Status to Unavailable.
-    /// 3. Bulk-rejects all other pending offers for this property.
-    /// 4. Appends NegotiationHistory rows for all actions (FR-09).
-    /// </summary>
-    [HttpPut("{id:guid}/accept")]
-    [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> AcceptOffer(
-        [FromRoute] Guid id,
-        [FromHeader(Name = "X-User-Id")] Guid? headerActorId,
-        CancellationToken cancellationToken)
-    {
-        var actorId = headerActorId ?? Guid.NewGuid();
-        var acceptedOffer = await _negotiationService.AcceptOfferAsync(id, actorId, cancellationToken);
-        return Ok(acceptedOffer);
-    }
+    [HttpGet("api/offers/my-offers")]
+    [Authorize(Roles = RoleNames.BuyerTenant)]
 
-    /// <summary>
-    /// Rejects an offer explicitly.
-    /// Appends a NegotiationHistory record with ActionType=Rejected (FR-09).
-    /// </summary>
-    [HttpPut("{id:guid}/reject")]
-    [ProducesResponseType(typeof(OfferDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> RejectOffer(
-        [FromRoute] Guid id,
-        [FromHeader(Name = "X-User-Id")] Guid? headerActorId,
-        CancellationToken cancellationToken)
-    {
-        var actorId = headerActorId ?? Guid.NewGuid();
-        var rejectedOffer = await _negotiationService.RejectOfferAsync(id, actorId, cancellationToken);
-        return Ok(rejectedOffer);
-    }
+    public async Task<ActionResult<PagedResult<OfferListItemDto>>> MyOffers([FromQuery] OfferListQuery query)
+        => Ok(await _offers.GetMyOffersAsync(User.GetUserId(), query));
+
+    [HttpGet("api/owner/offers")]
+    [Authorize(Roles = RoleNames.Owner)]
+    public async Task<ActionResult<PagedResult<OfferListItemDto>>> OwnerOffers([FromQuery] OfferListQuery query)
+        => Ok(await _offers.GetOwnerOffersAsync(User.GetUserId(), query));
+
+    [HttpPost("api/offers/{offerId:guid}/accept")]
+    [Authorize(Roles = Participants)]
+    public async Task<ActionResult<OfferDetailDto>> Accept(Guid offerId)
+        => Ok(await _offers.AcceptAsync(offerId, User.GetUserId()));
+
+
+    [HttpPost("api/offers/{offerId:guid}/reject")]
+    [Authorize(Roles = Participants)]
+    public async Task<ActionResult<OfferDetailDto>> Reject(Guid offerId)
+        => Ok(await _offers.RejectAsync(offerId, User.GetUserId()));
+
+    [HttpPost("api/offers/{offerId:guid}/counter")]
+    [Authorize(Roles = Participants)]
+
+    public async Task<ActionResult<OfferDetailDto>> Counter(Guid offerId, [FromBody] CounterOfferRequest request)
+        => Ok(await _offers.CounterAsync(offerId, User.GetUserId(), request));
 }

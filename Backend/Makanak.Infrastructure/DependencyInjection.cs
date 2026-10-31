@@ -1,49 +1,61 @@
+using Makanak.Application.Common.Interfaces;
+using Makanak.Infrastructure.Authentication;
+using Makanak.Infrastructure.Identity;
+using Makanak.Infrastructure.Persistence;
+using Makanak.Infrastructure.Repositories;
+using Makanak.Infrastructure.Storage;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Makanak.Application.Common.Interfaces;
-using Makanak.Domain.Entities;
-using Makanak.Infrastructure.Data;
-using Makanak.Infrastructure.Repositories;
-using Makanak.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace Makanak.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, string contentRootPath)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Server=(localdb)\\mssqllocaldb;Database=MakanakDb;Trusted_Connection=True;MultipleActiveResultSets=true";
-
-        // EF Core with SQL Server (no spatial extensions in MVP scope)
-        services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlServer(connectionString));
-
-        // ASP.NET Core Identity with Guid PK
-        services.AddIdentityCore<ApplicationUser>(options =>
+        // Connection string is read lazily so test hosts can override configuration.
+        services.AddDbContext<MakanakDbContext>((sp, options) =>
         {
-            options.Password.RequireDigit = true;
-            options.Password.RequireLowercase = true;
-            options.Password.RequireNonAlphanumeric = false;
-            options.Password.RequireUppercase = false;
-            options.Password.RequiredLength = 6;
-        })
-        .AddRoles<IdentityRole<Guid>>()
-        .AddEntityFrameworkStores<ApplicationDbContext>();
+            var cs = sp.GetRequiredService<IConfiguration>().GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+            options.UseSqlServer(cs, sql => sql.MigrationsAssembly(typeof(MakanakDbContext).Assembly.FullName));
+        });
 
-        // Repositories & Unit of Work
-        services.AddScoped<IPropertyRepository, PropertyRepository>();
-        services.AddScoped<IOfferRepository, OfferRepository>();
+        services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.User.RequireUniqueEmail = true;
+                options.Password.RequiredLength = 8;
+                options.Password.RequireDigit = true;
+                options.Password.RequireLowercase = true;
+                options.Password.RequireUppercase = true;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Lockout.AllowedForNewUsers = true;
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<MakanakDbContext>();
+
+        services.AddOptions<JwtSettings>()
+            .Bind(configuration.GetSection(JwtSettings.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<ImageStorageSettings>()
+            .Bind(configuration.GetSection(ImageStorageSettings.SectionName))
+            .PostConfigure(s =>
+            {
+                s.RootPath = Path.GetFullPath(Path.IsPathRooted(s.RootPath) ? s.RootPath : Path.Combine(contentRootPath, s.RootPath));
+            });
+
         services.AddScoped<IUnitOfWork, UnitOfWork>();
-
-        // Domain Services
-        services.AddScoped<INegotiationService, NegotiationService>();
-        services.AddScoped<IPropertyService, PropertyService>();
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserAccountGateway, UserAccountGateway>();
+        services.AddSingleton<IJwtService, JwtService>();
+        services.AddSingleton<IImageStorageService, LocalImageStorageService>();
 
         return services;
     }
 }
-

@@ -1,50 +1,66 @@
-using Microsoft.EntityFrameworkCore;
+using System.Data;
+using Makanak.Application.Common.Exceptions;
 using Makanak.Application.Common.Interfaces;
-using Makanak.Infrastructure.Data;
+using Makanak.Domain.Entities;
+using Makanak.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace Makanak.Infrastructure.Repositories;
 
-public class UnitOfWork : IUnitOfWork
+public sealed class UnitOfWork : IUnitOfWork
 {
-    private readonly ApplicationDbContext _context;
-    private IPropertyRepository? _properties;
-    private IOfferRepository? _offers;
+    private readonly MakanakDbContext _context;
 
-    public UnitOfWork(ApplicationDbContext context)
+    public UnitOfWork(MakanakDbContext context)
     {
         _context = context;
+        Properties = new PropertyRepository(context);
+        PropertyImages = new GenericRepository<PropertyImage>(context);
+        Offers = new OfferRepository(context);
+        NegotiationHistories = new GenericRepository<NegotiationHistory>(context);
     }
 
-    public IPropertyRepository Properties => _properties ??= new PropertyRepository(_context);
-    public IOfferRepository Offers => _offers ??= new OfferRepository(_context);
+    public IPropertyRepository Properties { get; }
+    public IRepository<PropertyImage> PropertyImages { get; }
+    public IOfferRepository Offers { get; }
+    public IRepository<NegotiationHistory> NegotiationHistories { get; }
 
-    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public async Task<int> SaveChangesAsync()
     {
-        return await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            return await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("The record was modified by another request. Reload the latest version and try again.");
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            throw new ConflictException("A conflicting record already exists.");
+        }
     }
 
-    public async Task<IDbTransactionProxy> BeginTransactionAsync(CancellationToken cancellationToken = default)
-    {
-        var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        return new DbTransactionProxy(transaction);
-    }
-
-    public async Task ExecuteTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+
+        return await strategy.ExecuteAsync(async () =>
         {
-            await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-            try
-            {
-                await operation();
-                await transaction.CommitAsync(cancellationToken);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
+            // Start every attempt from a clean slate so a retry never sees half-applied tracked state.
+            _context.ChangeTracker.Clear();
+
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+            var result = await action();
+            await transaction.CommitAsync();
+            return result;
         });
     }
+
+    public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class
+        => _context.Entry(entity).Property("RowVersion").OriginalValue = rowVersion;
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
 }

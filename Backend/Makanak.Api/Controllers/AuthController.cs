@@ -1,45 +1,29 @@
-using Microsoft.AspNetCore.Mvc;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Auth;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
-namespace Makanak.Api.Controllers;
+namespace Makanak.API.Controllers;
 
-/// <summary>
-/// Authentication & Identity Controller for Makanak Platform users (Owners, Seekers, Admins).
-/// </summary>
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/auth")]
 [Produces("application/json")]
+[AllowAnonymous]
 public class AuthController : ControllerBase
 {
-    private readonly IAuthService _authService;
+    private readonly IAuthService _auth;
 
-    public AuthController(IAuthService authService)
-    {
-        _authService = authService;
-    }
+    public AuthController(IAuthService auth) => _auth = auth;
 
-    /// <summary>
-    /// Registers a new user with an enterprise role (Owner, Seeker, Admin).
-    /// </summary>
     [HttpPost("register")]
-    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequestDto request, CancellationToken cancellationToken)
+    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
-        var response = await _authService.RegisterAsync(request, cancellationToken);
-        return Ok(response);
+        var result = await _auth.RegisterAsync(request);
+        return StatusCode(StatusCodes.Status201Created, result);
     }
 
-    /// <summary>
-    /// Authenticates a user and issues an authorization token.
-    /// </summary>
+
     [HttpPost("login")]
-    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Login([FromBody] LoginRequestDto request, CancellationToken cancellationToken)
-    {
-        var response = await _authService.LoginAsync(request, cancellationToken);
-        return Ok(response);
-    }
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
+        => Ok(await _auth.LoginAsync(request));
 }

@@ -2,12 +2,8 @@ using Makanak.Domain.Entities;
 
 namespace Makanak.Application.Common.Interfaces;
 
-public interface IPropertyRepository
+public interface IPropertyRepository : IRepository<Property>
 {
-    Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<Property?> GetByIdWithImagesAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<Property>> GetAllAsync(CancellationToken cancellationToken = default);
-    Task AddAsync(Property property, CancellationToken cancellationToken = default);
-    void Update(Property property);
+    Task ClearPrimaryImagesAsync(Guid propertyId);
+    Task<bool> SetPrimaryImageAsync(Guid propertyId, Guid imageId);
 }
-

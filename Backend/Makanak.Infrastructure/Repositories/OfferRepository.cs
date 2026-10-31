@@ -1,52 +1,23 @@
-using Microsoft.EntityFrameworkCore;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Domain.Entities;
 using Makanak.Domain.Enums;
-using Makanak.Infrastructure.Data;
+using Makanak.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace Makanak.Infrastructure.Repositories;
 
-public class OfferRepository : IOfferRepository
+public class OfferRepository : GenericRepository<Offer>, IOfferRepository
 {
-    private readonly ApplicationDbContext _context;
+    public OfferRepository(MakanakDbContext context) : base(context) { }
 
-    public OfferRepository(ApplicationDbContext context)
+    public async Task<bool> TryClaimPropertyAsync(Guid propertyId, Guid ownerId, PropertyStatus newStatus)
     {
-        _context = context;
-    }
-
-    public async Task<Offer?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _context.Offers
-            .Include(o => o.Seeker)
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
-    }
-
-    public async Task<Offer?> GetByIdWithPropertyAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _context.Offers
-            .Include(o => o.Property)
-            .Include(o => o.Seeker)
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<Offer>> GetPendingOffersByPropertyIdAsync(
-        Guid propertyId,
-        Guid excludeOfferId,
-        CancellationToken cancellationToken = default)
-    {
-        return await _context.Offers
-            .Where(o => o.PropertyId == propertyId && o.Id != excludeOfferId && (o.Status == OfferStatus.Pending || o.Status == OfferStatus.Countered))
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task AddAsync(Offer offer, CancellationToken cancellationToken = default)
-    {
-        await _context.Offers.AddAsync(offer, cancellationToken);
-    }
-
-    public void Update(Offer offer)
-    {
-        _context.Offers.Update(offer);
+        var now = DateTime.UtcNow;
+        var rows = await Context.Properties
+            .Where(p => p.Id == propertyId && p.OwnerId == ownerId && p.Status == PropertyStatus.Available)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Status, newStatus)
+                .SetProperty(p => p.UpdatedAtUtc, now));
+        return rows == 1;
     }
 }

@@ -1,17 +1,17 @@
+using Makanak.Domain.Entities;
+
 namespace Makanak.Application.Common.Interfaces;
 
-/// <summary>
-/// Unit of Work pattern interface guaranteeing transactional integrity across repositories.
-/// </summary>
 public interface IUnitOfWork
 {
     IPropertyRepository Properties { get; }
-
+    IRepository<PropertyImage> PropertyImages { get; }
     IOfferRepository Offers { get; }
+    IRepository<NegotiationHistory> NegotiationHistories { get; }
 
-    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<int> SaveChangesAsync();
 
-    Task<IDbTransactionProxy> BeginTransactionAsync(CancellationToken cancellationToken = default);
+    Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action);
 
-    Task ExecuteTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default);
+    void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class;
 }

@@ -3,7 +3,7 @@ namespace Makanak.Domain.Enums;
 public enum PropertyStatus
 {
     Available = 1,
-    Unavailable = 2,
-    Sold = 3,
-    Rented = 4
+    Sold = 2,
+    Rented = 3,
+    Inactive = 4
 }

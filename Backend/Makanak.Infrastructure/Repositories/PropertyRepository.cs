@@ -1,51 +1,24 @@
-using Microsoft.EntityFrameworkCore;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Domain.Entities;
-using Makanak.Infrastructure.Data;
+using Makanak.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace Makanak.Infrastructure.Repositories;
 
-public class PropertyRepository : IPropertyRepository
+public class PropertyRepository : GenericRepository<Property>, IPropertyRepository
 {
-    private readonly ApplicationDbContext _context;
+    public PropertyRepository(MakanakDbContext context) : base(context) { }
 
-    public PropertyRepository(ApplicationDbContext context)
-    {
-        _context = context;
-    }
+    public async Task ClearPrimaryImagesAsync(Guid propertyId)
+        => await Context.PropertyImages
+            .Where(i => i.PropertyId == propertyId && i.IsPrimary)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.IsPrimary, false));
 
-    public async Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<bool> SetPrimaryImageAsync(Guid propertyId, Guid imageId)
     {
-        return await _context.Properties
-            .Include(p => p.Owner)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
-    }
-
-    public async Task<Property?> GetByIdWithImagesAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _context.Properties
-            .Include(p => p.Owner)
-            .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<Property>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        return await _context.Properties
-            .AsNoTracking()
-            .Include(p => p.Images.Where(i => i.IsPrimary))
-            .OrderByDescending(p => p.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task AddAsync(Property property, CancellationToken cancellationToken = default)
-    {
-        await _context.Properties.AddAsync(property, cancellationToken);
-    }
-
-    public void Update(Property property)
-    {
-        _context.Properties.Update(property);
+        var rows = await Context.PropertyImages
+            .Where(i => i.Id == imageId && i.PropertyId == propertyId)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.IsPrimary, true));
+        return rows == 1;
     }
 }
-

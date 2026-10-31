@@ -2,8 +2,9 @@ namespace Makanak.Domain.Enums;
 
 public enum OfferStatus
 {
-    Pending = 1,
-    Countered = 2,
+    PendingOwnerResponse = 1,
+    PendingBuyerResponse = 2,
     Accepted = 3,
-    Rejected = 4
+    Rejected = 4,
+    Closed = 5
 }
