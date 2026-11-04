@@ -1,28 +1,33 @@
 namespace Makanak.Domain.Entities;
 
 /// <summary>
-/// Represents an image associated with a property listing (FR-04).
-/// A property may have multiple images; exactly one should be designated as primary.
+/// Image associated with a property (FR-04).
+/// Uses BaseEntity Hybrid ID pattern.
 /// </summary>
-public class PropertyImage
+public class PropertyImage : BaseEntity
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    // Internal FK
+    public long PropertyId { get; private set; }
 
-    /// <summary>
-    /// Foreign key to the owning <see cref="Property"/>.
-    /// </summary>
-    public Guid PropertyId { get; set; }
+    public string ImageUrl { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// Absolute URL to the image in cloud storage (e.g., Azure Blob / S3).
-    /// </summary>
-    public string ImageUrl { get; set; } = string.Empty;
+    public bool IsPrimary { get; private set; }
 
-    /// <summary>
-    /// Indicates whether this is the primary display image for the listing.
-    /// </summary>
-    public bool IsPrimary { get; set; } = false;
+    // Navigation
+    public virtual Property Property { get; private set; } = null!;
 
-    // Navigation Properties
-    public virtual Property Property { get; set; } = null!;
+    public static PropertyImage Create(long propertyId, string imageUrl, bool isPrimary = false)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            throw new ArgumentException("Image URL cannot be empty.", nameof(imageUrl));
+
+        return new PropertyImage
+        {
+            PropertyId = propertyId,
+            ImageUrl = imageUrl,
+            IsPrimary = isPrimary
+        };
+    }
+
+    private PropertyImage() { }
 }

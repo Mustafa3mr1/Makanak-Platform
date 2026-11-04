@@ -5,35 +5,30 @@ using Makanak.Infrastructure.Data;
 
 namespace Makanak.Infrastructure.Repositories;
 
-public class PropertyRepository : IPropertyRepository
+public sealed class PropertyRepository : IPropertyRepository
 {
     private readonly ApplicationDbContext _context;
 
-    public PropertyRepository(ApplicationDbContext context)
-    {
-        _context = context;
-    }
+    public PropertyRepository(ApplicationDbContext context) => _context = context;
 
-    public async Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Property?> GetByPublicIdAsync(Guid publicId, CancellationToken cancellationToken = default)
     {
         return await _context.Properties
-            .Include(p => p.Owner)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.PublicId == publicId, cancellationToken);
     }
 
-    public async Task<Property?> GetByIdWithImagesAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Property?> GetByPublicIdWithImagesAsync(Guid publicId, CancellationToken cancellationToken = default)
     {
         return await _context.Properties
-            .Include(p => p.Owner)
             .Include(p => p.Images)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.PublicId == publicId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Property>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Properties
             .AsNoTracking()
-            .Include(p => p.Images.Where(i => i.IsPrimary))
+            .Include(p => p.Images.Where(i => i.IsPrimary))  // Filtered include: only primary image
             .OrderByDescending(p => p.CreatedAtUtc)
             .ToListAsync(cancellationToken);
     }
@@ -48,4 +43,3 @@ public class PropertyRepository : IPropertyRepository
         _context.Properties.Update(property);
     }
 }
-

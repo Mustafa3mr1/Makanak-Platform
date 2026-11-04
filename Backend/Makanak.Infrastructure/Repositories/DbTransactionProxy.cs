@@ -3,27 +3,22 @@ using Makanak.Application.Common.Interfaces;
 
 namespace Makanak.Infrastructure.Repositories;
 
+/// <summary>
+/// Wraps EF Core's IDbContextTransaction behind the application-layer abstraction.
+/// Implements IAsyncDisposable so callers can safely use <c>await using</c>.
+/// </summary>
 public sealed class DbTransactionProxy : IDbTransactionProxy
 {
     private readonly IDbContextTransaction _transaction;
 
-    public DbTransactionProxy(IDbContextTransaction transaction)
-    {
-        _transaction = transaction;
-    }
+    public DbTransactionProxy(IDbContextTransaction transaction) => _transaction = transaction;
 
     public Task CommitAsync(CancellationToken cancellationToken = default)
-    {
-        return _transaction.CommitAsync(cancellationToken);
-    }
+        => _transaction.CommitAsync(cancellationToken);
 
     public Task RollbackAsync(CancellationToken cancellationToken = default)
-    {
-        return _transaction.RollbackAsync(cancellationToken);
-    }
+        => _transaction.RollbackAsync(cancellationToken);
 
     public ValueTask DisposeAsync()
-    {
-        return _transaction.DisposeAsync();
-    }
+        => _transaction.DisposeAsync();
 }
