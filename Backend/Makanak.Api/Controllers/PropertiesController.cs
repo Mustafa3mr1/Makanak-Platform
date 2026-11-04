@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Properties;
@@ -5,7 +6,8 @@ using Makanak.Application.DTOs.Properties;
 namespace Makanak.Api.Controllers;
 
 /// <summary>
-/// Property Management API: CRUD for property listings (FR-01, FR-04 MVP scope).
+/// Property Management API: CRUD for property listings.
+/// Uses Hybrid ID pattern: external PublicId (Guid) for routes & DTOs.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -13,36 +15,39 @@ namespace Makanak.Api.Controllers;
 public class PropertiesController : ControllerBase
 {
     private readonly IPropertyService _propertyService;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUserService _currentUserService;
 
-    public PropertiesController(IPropertyService propertyService, IUnitOfWork unitOfWork)
+    public PropertiesController(
+        IPropertyService propertyService,
+        ICurrentUserService currentUserService)
     {
         _propertyService = propertyService;
-        _unitOfWork = unitOfWork;
+        _currentUserService = currentUserService;
     }
 
     /// <summary>
-    /// Creates a new property listing with City and Address location fields (MVP scope).
+    /// Creates a new property listing. Requires authentication.
+    /// Owner identity is resolved securely from JWT claims.
     /// </summary>
     [HttpPost]
+    [Authorize]
     [ProducesResponseType(typeof(PropertyDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> CreateProperty(
         [FromBody] CreatePropertyRequestDto request,
-        [FromHeader(Name = "X-User-Id")] Guid? headerOwnerId,
         CancellationToken cancellationToken)
     {
-        // Owner ID retrieved from Claims/Auth context or fallback demo header
-        var ownerId = headerOwnerId ?? Guid.NewGuid();
-
-        var created = await _propertyService.CreatePropertyAsync(request, ownerId, cancellationToken);
+        var ownerInternalId = _currentUserService.GetCurrentUserId();
+        var created = await _propertyService.CreatePropertyAsync(request, ownerInternalId, cancellationToken);
         return CreatedAtAction(nameof(GetPropertyById), new { id = created.Id }, created);
     }
 
     /// <summary>
-    /// Returns all property listings ordered by creation date (newest first).
+    /// Returns all property listings. Publicly accessible.
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(IReadOnlyList<PropertyDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllProperties(CancellationToken cancellationToken)
     {
@@ -51,14 +56,15 @@ public class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves a single property by its unique Guid identifier.
+    /// Retrieves a single property by its unique external PublicId (Guid). Publicly accessible.
     /// </summary>
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(PropertyDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPropertyById([FromRoute] Guid id, CancellationToken cancellationToken)
     {
-        var property = await _propertyService.GetPropertyByIdAsync(id, cancellationToken);
+        var property = await _propertyService.GetPropertyByPublicIdAsync(id, cancellationToken);
         if (property == null)
         {
             return NotFound($"Property with Id '{id}' not found.");

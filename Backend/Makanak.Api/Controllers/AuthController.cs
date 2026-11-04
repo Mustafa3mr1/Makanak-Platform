@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Auth;
@@ -5,7 +6,8 @@ using Makanak.Application.DTOs.Auth;
 namespace Makanak.Api.Controllers;
 
 /// <summary>
-/// Authentication & Identity Controller for Makanak Platform users (Owners, Seekers, Admins).
+/// Authentication & Identity Controller for Makanak Platform users.
+/// Issues verified JWT tokens.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -20,9 +22,10 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Registers a new user with an enterprise role (Owner, Seeker, Admin).
+    /// Registers a new user with an enterprise role and returns a signed JWT.
     /// </summary>
     [HttpPost("register")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto request, CancellationToken cancellationToken)
@@ -32,9 +35,10 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Authenticates a user and issues an authorization token.
+    /// Authenticates a user and issues a signed JWT.
     /// </summary>
     [HttpPost("login")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request, CancellationToken cancellationToken)

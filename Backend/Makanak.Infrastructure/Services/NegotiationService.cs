@@ -3,105 +3,94 @@ using Makanak.Application.DTOs.Offers;
 using Makanak.Domain.Entities;
 using Makanak.Domain.Enums;
 using Makanak.Domain.Exceptions;
-using Makanak.Infrastructure.Data;
 
 namespace Makanak.Infrastructure.Services;
 
 /// <summary>
 /// Negotiation service orchestrating offer workflows with transactional consistency.
-/// Every state transition appends an immutable NegotiationHistory record (FR-09).
-/// SignalR removed from MVP scope.
+/// DbContext leak eliminated: all reads, writes, and audit logs go strictly through IUnitOfWork.
+/// Works with Hybrid ID: resolves external PublicId (Guid) to internal Id (long) for joins.
 /// </summary>
-public class NegotiationService : INegotiationService
+public sealed class NegotiationService : INegotiationService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ApplicationDbContext _context;
 
-    public NegotiationService(IUnitOfWork unitOfWork, ApplicationDbContext context)
+    public NegotiationService(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        _context = context;
     }
 
     public async Task<OfferDto> CreateInitialOfferAsync(
         CreateOfferRequestDto request,
-        Guid seekerId,
+        long seekerInternalId,
         CancellationToken cancellationToken = default)
     {
-        var property = await _unitOfWork.Properties.GetByIdAsync(request.PropertyId, cancellationToken)
-            ?? throw new InvalidOfferOperationException($"Property '{request.PropertyId}' was not found.");
+        var property = await _unitOfWork.Properties.GetByPublicIdAsync(request.PropertyPublicId, cancellationToken)
+            ?? throw new InvalidOfferOperationException($"Property with identifier '{request.PropertyPublicId}' was not found.");
 
         property.EnsureIsAvailable();
 
-        var offer = new Offer
-        {
-            PropertyId = request.PropertyId,
-            SeekerId = seekerId,
-            CurrentPrice = request.InitialPrice,
-            Status = OfferStatus.Pending,
-            RoundCount = 0
-        };
+        var offer = Offer.Create(property.Id, seekerInternalId, request.InitialPrice);
 
         await _unitOfWork.Offers.AddAsync(offer, cancellationToken);
 
-        // FR-09: Record the initial submission in the negotiation audit trail
-        _context.NegotiationHistories.Add(new NegotiationHistory
-        {
-            OfferId = offer.Id,
-            ActionByUserId = seekerId,
-            ActionType = NegotiationActionType.Submitted,
-            ProposedPrice = offer.CurrentPrice,
-            Timestamp = offer.CreatedAtUtc
-        });
+        // FR-09: Record submission in negotiation audit trail via IUnitOfWork (not direct DbContext)
+        _unitOfWork.NegotiationHistories.Add(NegotiationHistory.Record(
+            offer.Id,
+            seekerInternalId,
+            NegotiationActionType.Submitted,
+            offer.CurrentPrice,
+            offer.CreatedAtUtc));
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return MapToDto(offer);
+        var seekerUser = await _unitOfWork.Users.GetByIdAsync(seekerInternalId, cancellationToken);
+        return MapToDto(offer, property.PublicId, seekerUser?.PublicId ?? Guid.Empty);
     }
 
     public async Task<OfferDto> CounterOfferAsync(
-        Guid offerId,
+        Guid offerPublicId,
         CounterOfferRequestDto request,
-        Guid actorId,
+        long actorInternalId,
         CancellationToken cancellationToken = default)
     {
-        var offer = await _unitOfWork.Offers.GetByIdWithPropertyAsync(offerId, cancellationToken)
-            ?? throw new InvalidOfferOperationException($"Offer '{offerId}' was not found.");
+        var offer = await _unitOfWork.Offers.GetByPublicIdWithPropertyAsync(offerPublicId, cancellationToken)
+            ?? throw new InvalidOfferOperationException($"Offer '{offerPublicId}' was not found.");
 
         offer.Property.EnsureIsAvailable();
 
-        // Enforces domain invariant: max 2 rounds
+        // Enforces domain invariant (max 2 rounds)
         offer.Counter(request.CounterPrice);
-
         _unitOfWork.Offers.Update(offer);
 
-        // FR-09: Record the counter action
-        _context.NegotiationHistories.Add(new NegotiationHistory
-        {
-            OfferId = offer.Id,
-            ActionByUserId = actorId,
-            ActionType = NegotiationActionType.Countered,
-            ProposedPrice = offer.CurrentPrice,
-            Timestamp = offer.UpdatedAtUtc ?? DateTime.UtcNow
-        });
+        // FR-09: Record counter via IUnitOfWork
+        _unitOfWork.NegotiationHistories.Add(NegotiationHistory.Record(
+            offer.Id,
+            actorInternalId,
+            NegotiationActionType.Countered,
+            offer.CurrentPrice,
+            offer.UpdatedAtUtc));
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return MapToDto(offer);
+        var seekerUser = await _unitOfWork.Users.GetByIdAsync(offer.SeekerId, cancellationToken);
+        return MapToDto(offer, offer.Property.PublicId, seekerUser?.PublicId ?? Guid.Empty);
     }
 
     public async Task<OfferDto> AcceptOfferAsync(
-        Guid offerId,
-        Guid actorId,
+        Guid offerPublicId,
+        long actorInternalId,
         CancellationToken cancellationToken = default)
     {
         Offer? acceptedOffer = null;
+        Guid propertyPublicId = Guid.Empty;
+        Guid seekerPublicId = Guid.Empty;
 
         // Atomic Unit of Work isolated transaction
         await _unitOfWork.ExecuteTransactionAsync(async () =>
         {
-            var offer = await _unitOfWork.Offers.GetByIdWithPropertyAsync(offerId, cancellationToken)
-                ?? throw new InvalidOfferOperationException($"Offer '{offerId}' was not found.");
+            var offer = await _unitOfWork.Offers.GetByPublicIdWithPropertyAsync(offerPublicId, cancellationToken)
+                ?? throw new InvalidOfferOperationException($"Offer '{offerPublicId}' was not found.");
 
             var property = offer.Property;
             property.EnsureIsAvailable();
@@ -114,7 +103,7 @@ public class NegotiationService : INegotiationService
             property.MarkAsUnavailable();
             _unitOfWork.Properties.Update(property);
 
-            // 3. Reject all competing pending/countered offers for this property
+            // 3. Reject competing pending/countered offers using internal clustered key joins
             var competingOffers = await _unitOfWork.Offers.GetPendingOffersByPropertyIdAsync(
                 property.Id, offer.Id, cancellationToken);
 
@@ -123,65 +112,64 @@ public class NegotiationService : INegotiationService
                 competingOffer.Reject();
                 _unitOfWork.Offers.Update(competingOffer);
 
-                // FR-09: History entry for each auto-rejected competing offer
-                _context.NegotiationHistories.Add(new NegotiationHistory
-                {
-                    OfferId = competingOffer.Id,
-                    ActionByUserId = actorId,
-                    ActionType = NegotiationActionType.Rejected,
-                    ProposedPrice = competingOffer.CurrentPrice,
-                    Timestamp = DateTime.UtcNow
-                });
+                // FR-09: Audit record for competing rejection
+                _unitOfWork.NegotiationHistories.Add(NegotiationHistory.Record(
+                    competingOffer.Id,
+                    actorInternalId,
+                    NegotiationActionType.Rejected,
+                    competingOffer.CurrentPrice,
+                    DateTime.UtcNow));
             }
 
-            // FR-09: History entry for the accepted offer
-            _context.NegotiationHistories.Add(new NegotiationHistory
-            {
-                OfferId = offer.Id,
-                ActionByUserId = actorId,
-                ActionType = NegotiationActionType.Accepted,
-                ProposedPrice = offer.CurrentPrice,
-                Timestamp = offer.UpdatedAtUtc ?? DateTime.UtcNow
-            });
+            // FR-09: Audit record for the accepted offer
+            _unitOfWork.NegotiationHistories.Add(NegotiationHistory.Record(
+                offer.Id,
+                actorInternalId,
+                NegotiationActionType.Accepted,
+                offer.CurrentPrice,
+                offer.UpdatedAtUtc));
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             acceptedOffer = offer;
+            propertyPublicId = property.PublicId;
         }, cancellationToken);
 
-        return MapToDto(acceptedOffer!);
+        var seeker = await _unitOfWork.Users.GetByIdAsync(acceptedOffer!.SeekerId, cancellationToken);
+        seekerPublicId = seeker?.PublicId ?? Guid.Empty;
+
+        return MapToDto(acceptedOffer!, propertyPublicId, seekerPublicId);
     }
 
     public async Task<OfferDto> RejectOfferAsync(
-        Guid offerId,
-        Guid actorId,
+        Guid offerPublicId,
+        long actorInternalId,
         CancellationToken cancellationToken = default)
     {
-        var offer = await _unitOfWork.Offers.GetByIdAsync(offerId, cancellationToken)
-            ?? throw new InvalidOfferOperationException($"Offer '{offerId}' was not found.");
+        var offer = await _unitOfWork.Offers.GetByPublicIdWithPropertyAsync(offerPublicId, cancellationToken)
+            ?? throw new InvalidOfferOperationException($"Offer '{offerPublicId}' was not found.");
 
         offer.Reject();
         _unitOfWork.Offers.Update(offer);
 
-        // FR-09: Record the rejection
-        _context.NegotiationHistories.Add(new NegotiationHistory
-        {
-            OfferId = offer.Id,
-            ActionByUserId = actorId,
-            ActionType = NegotiationActionType.Rejected,
-            ProposedPrice = offer.CurrentPrice,
-            Timestamp = offer.UpdatedAtUtc ?? DateTime.UtcNow
-        });
+        // FR-09: Record rejection via IUnitOfWork
+        _unitOfWork.NegotiationHistories.Add(NegotiationHistory.Record(
+            offer.Id,
+            actorInternalId,
+            NegotiationActionType.Rejected,
+            offer.CurrentPrice,
+            offer.UpdatedAtUtc));
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return MapToDto(offer);
+        var seeker = await _unitOfWork.Users.GetByIdAsync(offer.SeekerId, cancellationToken);
+        return MapToDto(offer, offer.Property.PublicId, seeker?.PublicId ?? Guid.Empty);
     }
 
-    private static OfferDto MapToDto(Offer offer) => new(
-        offer.Id,
-        offer.PropertyId,
-        offer.SeekerId,
+    private static OfferDto MapToDto(Offer offer, Guid propertyPublicId, Guid seekerPublicId) => new(
+        offer.PublicId,
+        propertyPublicId,
+        seekerPublicId,
         offer.CurrentPrice,
         offer.Status,
         offer.RoundCount,

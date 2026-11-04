@@ -1,9 +1,10 @@
 namespace Makanak.Domain.Exceptions;
 
+/// <summary>
+/// Thrown when negotiation round limit is exceeded.
+/// File name matches class name exactly (fixes previous mismatch).
+/// </summary>
 public sealed class NegotiationLimitExceededException : DomainException
 {
-    public NegotiationLimitExceededException(string message = "The negotiation round limit of 2 rounds has been exceeded.")
-        : base(message)
-    {
-    }
+    public NegotiationLimitExceededException(string message) : base(message) { }
 }

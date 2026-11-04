@@ -3,59 +3,59 @@ using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Auth;
 using Makanak.Domain.Entities;
 using Makanak.Domain.Exceptions;
+using Makanak.Infrastructure.Identity;
 
 namespace Makanak.Infrastructure.Services;
 
-public class AuthService : IAuthService
+/// <summary>
+/// Authentication service. Issues real signed JWTs via JwtTokenService.
+/// No DbContext injection — uses ASP.NET Core Identity's UserManager only.
+/// Throws <see cref="AuthException"/> for auth failures (not InvalidOfferOperationException).
+/// </summary>
+public sealed class AuthService : IAuthService
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly JwtTokenService _jwtTokenService;
 
-    public AuthService(UserManager<ApplicationUser> userManager)
+    public AuthService(UserManager<ApplicationUser> userManager, JwtTokenService jwtTokenService)
     {
         _userManager = userManager;
+        _jwtTokenService = jwtTokenService;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
     {
         var existingUser = await _userManager.FindByEmailAsync(request.Email);
-        if (existingUser != null)
-        {
-            throw new InvalidOfferOperationException("User with this email already exists.");
-        }
+        if (existingUser is not null)
+            throw new AuthException($"An account with email '{request.Email}' already exists.");
 
-        var user = new ApplicationUser
-        {
-            Id = Guid.NewGuid(),
-            UserName = request.Email,
-            Email = request.Email,
-            FullName = request.FullName,
-            UserType = request.UserType
-        };
+        var user = ApplicationUser.Create(request.Email, request.FullName, request.UserType);
 
         var result = await _userManager.CreateAsync(user, request.Password);
         if (!result.Succeeded)
         {
-            var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            throw new InvalidOfferOperationException($"Failed to register user: {errors}");
+            var errors = string.Join("; ", result.Errors.Select(e => e.Description));
+            throw new AuthException($"Registration failed: {errors}");
         }
 
-        // Return token placeholder (can be expanded to JWT handler)
-        var token = $"demo_token_{Guid.NewGuid()}";
-        return new AuthResponseDto(user.Id, user.FullName, user.Email!, user.UserType, token, DateTime.UtcNow.AddDays(7));
+        var (token, expiresAt) = _jwtTokenService.GenerateToken(user);
+        return new AuthResponseDto(user.PublicId, user.FullName, user.Email!, user.UserType, token, expiresAt);
     }
 
     public async Task<AuthResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email)
-            ?? throw new InvalidOfferOperationException("Invalid email or password.");
+        // Generic message prevents user enumeration attacks
+        const string invalidCredentialsMessage = "Invalid email or password.";
+
+        var user = await _userManager.FindByEmailAsync(request.Email);
+        if (user is null)
+            throw new AuthException(invalidCredentialsMessage);
 
         var passwordValid = await _userManager.CheckPasswordAsync(user, request.Password);
         if (!passwordValid)
-        {
-            throw new InvalidOfferOperationException("Invalid email or password.");
-        }
+            throw new AuthException(invalidCredentialsMessage);
 
-        var token = $"demo_token_{Guid.NewGuid()}";
-        return new AuthResponseDto(user.Id, user.FullName, user.Email!, user.UserType, token, DateTime.UtcNow.AddDays(7));
+        var (token, expiresAt) = _jwtTokenService.GenerateToken(user);
+        return new AuthResponseDto(user.PublicId, user.FullName, user.Email!, user.UserType, token, expiresAt);
     }
 }

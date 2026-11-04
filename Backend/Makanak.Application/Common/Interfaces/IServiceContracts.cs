@@ -12,25 +12,32 @@ public interface IAuthService
 
 public interface IPropertyService
 {
-    Task<PropertyDto> CreatePropertyAsync(CreatePropertyRequestDto request, Guid ownerId, CancellationToken cancellationToken = default);
-    Task<PropertyDto?> GetPropertyByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    /// <param name="ownerInternalId">Resolved from JWT claims — internal long Id of the authenticated owner.</param>
+    Task<PropertyDto> CreatePropertyAsync(CreatePropertyRequestDto request, long ownerInternalId, CancellationToken cancellationToken = default);
+
+    /// <param name="publicId">External Guid from API route — never the internal Id.</param>
+    Task<PropertyDto?> GetPropertyByPublicIdAsync(Guid publicId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<PropertyDto>> GetAllPropertiesAsync(CancellationToken cancellationToken = default);
 }
 
 public interface INegotiationService
 {
-    Task<OfferDto> CreateInitialOfferAsync(CreateOfferRequestDto request, Guid seekerId, CancellationToken cancellationToken = default);
-    Task<OfferDto> CounterOfferAsync(Guid offerId, CounterOfferRequestDto request, Guid actorId, CancellationToken cancellationToken = default);
+    /// <param name="seekerInternalId">Internal long Id resolved from JWT claims.</param>
+    Task<OfferDto> CreateInitialOfferAsync(CreateOfferRequestDto request, long seekerInternalId, CancellationToken cancellationToken = default);
+
+    /// <param name="offerPublicId">External Guid from API route.</param>
+    /// <param name="actorInternalId">Internal long Id resolved from JWT claims.</param>
+    Task<OfferDto> CounterOfferAsync(Guid offerPublicId, CounterOfferRequestDto request, long actorInternalId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes the atomic Unit of Work transaction:
-    /// 1. Marks target offer as Accepted.
-    /// 2. Updates Property Status to Unavailable.
-    /// 3. Rejects all other pending offers for this property within a single DB transaction.
-    /// Appends <see cref="NegotiationHistory"/> records for each action (FR-09).
+    /// Atomic Unit of Work transaction:
+    /// 1. Marks target offer Accepted.
+    /// 2. Marks Property Unavailable.
+    /// 3. Bulk-rejects all competing Pending/Countered offers for this property.
+    /// 4. Appends NegotiationHistory records for all actions (FR-09).
     /// </summary>
-    Task<OfferDto> AcceptOfferAsync(Guid offerId, Guid actorId, CancellationToken cancellationToken = default);
+    Task<OfferDto> AcceptOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
 
-    Task<OfferDto> RejectOfferAsync(Guid offerId, Guid actorId, CancellationToken cancellationToken = default);
+    Task<OfferDto> RejectOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
 }
-
