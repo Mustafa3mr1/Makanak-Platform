@@ -6,7 +6,8 @@ public record RegisterRequestDto(
     string FullName,
     string Email,
     string Password,
-    UserType UserType
+    UserType UserType,
+    string? PhoneNumber = null
 );
 
 public record LoginRequestDto(
@@ -14,15 +15,21 @@ public record LoginRequestDto(
     string Password
 );
 
-/// <summary>
-/// Auth response DTO. Exposes <see cref="UserId"/> as a Guid (PublicId).
-/// The internal long Id is NEVER returned to the client.
-/// </summary>
-public record AuthResponseDto(
-    Guid UserId,       // PublicId — the client's permanent external reference
+public record UserProfileDto(
+    Guid PublicId,
     string FullName,
     string Email,
     UserType UserType,
-    string Token,      // Signed JWT
-    DateTime ExpiresAtUtc
+    string? PhoneNumber
+);
+
+public record AuthResponseDto(
+    string Token,
+    DateTime ExpiresAt,
+    UserProfileDto User
+);
+
+public record UpdateUserProfileRequestDto(
+    string FullName,
+    string? PhoneNumber
 );

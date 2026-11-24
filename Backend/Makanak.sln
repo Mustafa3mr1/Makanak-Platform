@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Makanak.Infrastructure", "M
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Makanak.Api", "Makanak.Api\Makanak.Api.csproj", "{435FADAB-1C8D-4984-840B-8589102AF9EE}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Makanak.Tests", "tests\Makanak.Tests\Makanak.Tests.csproj", "{B67A7C56-B2B5-4931-8168-9E882844541C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,8 +73,23 @@ Global
 		{435FADAB-1C8D-4984-840B-8589102AF9EE}.Release|x64.Build.0 = Release|Any CPU
 		{435FADAB-1C8D-4984-840B-8589102AF9EE}.Release|x86.ActiveCfg = Release|Any CPU
 		{435FADAB-1C8D-4984-840B-8589102AF9EE}.Release|x86.Build.0 = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|x64.Build.0 = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Debug|x86.Build.0 = Debug|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|x64.ActiveCfg = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|x64.Build.0 = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|x86.ActiveCfg = Release|Any CPU
+		{B67A7C56-B2B5-4931-8168-9E882844541C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B67A7C56-B2B5-4931-8168-9E882844541C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

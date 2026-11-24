@@ -1,12 +1,17 @@
 namespace Makanak.Domain.Exceptions;
 
-public abstract class DomainException : Exception
+public class DomainException : Exception
 {
-    protected DomainException(string message) : base(message)
+    public string Code { get; }
+
+    public DomainException(string message, string code = "domain_error") : base(message)
     {
+        Code = code;
     }
 
-    protected DomainException(string message, Exception innerException) : base(message, innerException)
+    public DomainException(string message, Exception innerException, string code = "domain_error")
+        : base(message, innerException)
     {
+        Code = code;
     }
 }

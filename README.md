@@ -215,9 +215,12 @@ erDiagram
 │   │   │   └── NegotiationHistory.cs       ← Append-only audit log
 │   │   ├── 📂 Enums/
 │   │   │   ├── UserType.cs                 ← Owner=1, Seeker=2, Admin=3
-│   │   │   ├── OfferStatus.cs              ← Pending, Countered, Accepted, Rejected
-│   │   │   ├── PropertyStatus.cs           ← Available, Unavailable, Sold, Rented
-│   │   │   └── NegotiationActionType.cs    ← Submitted, Countered, Accepted, Rejected
+│   │   │   ├── OfferStatus.cs              ← Pending=1, Countered=2, Accepted=3, Rejected=4
+│   │   │   ├── PropertyStatus.cs           ← Available=1, Pending=2, Sold=3
+│   │   │   ├── PropertyType.cs             ← Apartment, Villa, Office, Duplex, Townhouse
+│   │   │   ├── ListingType.cs              ← Sale, Rent
+│   │   │   ├── Features.cs                 ← [Flags] Parking, Security, Balcony, Elevator...
+│   │   │   └── NegotiationActionType.cs    ← Submitted=1, Countered=2, Accepted=3, Rejected=4
 │   │   └── 📂 Exceptions/
 │   │       ├── DomainException.cs          ← Base domain exception
 │   │       ├── AuthException.cs
@@ -235,15 +238,19 @@ erDiagram
 │   │   │   ├── IUserRepository.cs
 │   │   │   ├── ICurrentUserService.cs
 │   │   │   ├── IDbTransactionProxy.cs
-│   │   │   └── IServiceContracts.cs        ← IAuthService, INegotiationService, IPropertyService
+│   │   │   ├── IFileStorageService.cs      ← Local disk file storage contract
+│   │   │   ├── IDashboardService.cs        ← Owner & Seeker dashboard statistics
+│   │   │   └── IServiceContracts.cs        ← IAuthService, INegotiationService, IPropertyService, IUserService
 │   │   └── 📂 DTOs/
-│   │       ├── 📂 Auth/                    ← RegisterRequest, LoginRequest, AuthResponse
-│   │       ├── 📂 Offers/                  ← CreateOfferRequest, CounterOfferRequest, OfferResponse
-│   │       └── 📂 Properties/              ← CreatePropertyRequest, PropertyResponse
+│   │       ├── 📂 Auth/                    ← RegisterRequest, LoginRequest, AuthResponse, UserProfile
+│   │       ├── 📂 Offers/                  ← CreateOffer, CounterOffer, OfferDetails, OfferListItem
+│   │       ├── 📂 Properties/              ← CreateProperty, UpdateProperty, PropertyDetails, PropertyListItem
+│   │       └── 📂 Dashboard/               ← OwnerDashboardDto, SeekerDashboardDto
 │   │
 │   ├── 📂 Makanak.Infrastructure/          ← ⚙️ EF Core, JWT, Repositories (implements Application)
 │   │   ├── 📂 Data/
 │   │   │   ├── ApplicationDbContext.cs
+│   │   │   ├── DevDataSeeder.cs            ← Seeds realistic Egyptian properties & users
 │   │   │   └── 📂 Configurations/          ← 5× IEntityTypeConfiguration<T>
 │   │   ├── 📂 Identity/
 │   │   │   ├── JwtTokenService.cs          ← HMAC-SHA256 token generation
@@ -258,16 +265,27 @@ erDiagram
 │   │   ├── 📂 Services/
 │   │   │   ├── AuthService.cs
 │   │   │   ├── NegotiationService.cs
-│   │   │   └── PropertyService.cs
+│   │   │   ├── PropertyService.cs
+│   │   │   ├── UserService.cs
+│   │   │   ├── DashboardService.cs
+│   │   │   └── LocalDiskFileStorageService.cs
 │   │   └── DependencyInjection.cs          ← All service registrations
 │   │
-│   └── 📂 Makanak.Api/                     ← 🌐 HTTP entry point
-│       ├── 📂 Controllers/
-│       │   ├── AuthController.cs           ← /api/auth (public)
-│       │   ├── PropertiesController.cs     ← /api/properties (mixed auth)
-│       │   └── OffersController.cs         ← /api/offers (fully [Authorize])
-│       └── Program.cs                      ← DI composition root + middleware pipeline
+│   ├── 📂 Makanak.Api/                     ← 🌐 HTTP entry point
+│   │   ├── 📂 Controllers/
+│   │   │   ├── AuthController.cs           ← /api/auth
+│   │   │   ├── UsersController.cs          ← /api/users/me
+│   │   │   ├── PropertiesController.cs     ← /api/properties & /images
+│   │   │   ├── OffersController.cs         ← /api/offers
+│   │   │   └── DashboardController.cs      ← /api/dashboard/owner & /seeker
+│   │   └── Program.cs                      ← DI composition root + middleware pipeline
+│   │
+│   └── 📂 tests/
+│       └── 📂 Makanak.Tests/               ← 🧪 Unit & end-to-end integration test suite
 │
+├── 📂 docs/
+│   ├── openapi.json                        ← Exported Swagger / OpenAPI 3.0 specification
+│   └── api-contract.md                     ← Single source of truth API contract
 └── 📂 plan/
     └── makanak_mvp_erd.md                  ← Architecture decision records
 ```
@@ -347,38 +365,45 @@ The API will be available at:
 
 ## 🔌 API Reference
 
-### Authentication
+### Authentication & Users
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Public | Register as Owner or Seeker |
-| `POST` | `/api/auth/login` | Public | Login and receive JWT token |
+| `POST` | `/api/auth/login` | Public | Login and receive signed JWT token |
+| `GET` | `/api/users/me` | 🔒 Authenticated | Get current authenticated user profile |
+| `PUT` | `/api/users/me` | 🔒 Authenticated | Update profile (fullName, phoneNumber) |
 
 <details>
 <summary>📋 Register Request Body</summary>
 
 ```json
 {
-  "userName": "john_doe",
-  "email": "john@example.com",
-  "password": "StrongP@ss1",
-  "userType": 2
+  "fullName": "Ahmed Hassan",
+  "email": "ahmed@example.com",
+  "password": "Password123!",
+  "userType": "Owner",
+  "phoneNumber": "+201001234567"
 }
 ```
-`userType`: `1` = Owner, `2` = Seeker, `3` = Admin
+`userType`: `"Owner"` or `"Seeker"` (string enum).
 
 </details>
 
 <details>
-<summary>📋 Login Response</summary>
+<summary>📋 Login & Register Response</summary>
 
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresAt": "2025-01-01T12:00:00Z",
-  "publicId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "userName": "john_doe",
-  "userType": 2
+  "expiresAt": "2026-11-25T12:00:00Z",
+  "user": {
+    "publicId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "fullName": "Ahmed Hassan",
+    "email": "ahmed@example.com",
+    "userType": "Owner",
+    "phoneNumber": "+201001234567"
+  }
 }
 ```
 
@@ -390,9 +415,15 @@ The API will be available at:
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/properties` | Public | List all available properties |
-| `GET` | `/api/properties/{publicId}` | Public | Get a single property by PublicId |
+| `GET` | `/api/properties` | Public | Search available properties (filtered, sorted, paged) |
+| `GET` | `/api/properties/{publicId}` | Public | Get single property details (404 for non-owner if unavailable) |
+| `GET` | `/api/properties/mine` | 🔒 Owner | Get owner's properties with optional status filter (paged) |
 | `POST` | `/api/properties` | 🔒 Owner | Create a new property listing |
+| `PUT` | `/api/properties/{publicId}` | 🔒 Owner | Update listing (RowVersion concurrency-protected) |
+| `DELETE` | `/api/properties/{publicId}` | 🔒 Owner | Soft-delete property listing (audit-safe) |
+| `POST` | `/api/properties/{publicId}/images` | 🔒 Owner | Upload up to 10 images (JPEG/PNG/WebP, max 5MB, magic-byte checked) |
+| `PUT` | `/api/properties/{publicId}/images/{imageId}/primary` | 🔒 Owner | Set image as primary |
+| `DELETE` | `/api/properties/{publicId}/images/{imageId}` | 🔒 Owner | Delete image (auto-promotes next image if primary) |
 
 <details>
 <summary>📋 Create Property Request</summary>
@@ -401,9 +432,17 @@ The API will be available at:
 {
   "title": "Modern 3BR Apartment in Zamalek",
   "description": "Fully furnished, Nile view, 24/7 security",
-  "price": 850000.00,
+  "price": 8500000.00,
+  "listingType": "Sale",
+  "propertyType": "Apartment",
   "city": "Cairo",
-  "address": "12 Hassan Sabry St, Zamalek"
+  "address": "12 Hassan Sabry St, Zamalek",
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "areaSqm": 185.00,
+  "latitude": 30.0626,
+  "longitude": 31.2197,
+  "features": ["Balcony", "Elevator", "Security", "AirConditioning"]
 }
 ```
 
@@ -415,10 +454,22 @@ The API will be available at:
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/offers` | 🔒 Seeker | Submit an initial offer on a property |
-| `PUT` | `/api/offers/{publicId}/counter` | 🔒 Owner | Counter the seeker's offer (Round 2) |
-| `PUT` | `/api/offers/{publicId}/accept` | 🔒 Both | Accept the current offer |
-| `PUT` | `/api/offers/{publicId}/reject` | 🔒 Both | Reject the offer |
+| `GET` | `/api/offers/mine` | 🔒 Seeker | Get seeker's submitted offers (paged, newest first) |
+| `GET` | `/api/offers/incoming` | 🔒 Owner | Get incoming offers across owner properties (paged) |
+| `GET` | `/api/offers/{publicId}` | 🔒 Party Only | Get offer details, allowed actions & full audit trail |
+| `POST` | `/api/offers` | 🔒 Seeker | Submit initial round-1 offer on an Available property |
+| `PUT` | `/api/offers/{publicId}/counter` | 🔒 Owner | Submit counter-offer (Round 2 — final round) |
+| `PUT` | `/api/offers/{publicId}/accept` | 🔒 Owner/Seeker | Accept offer (atomically marks property Sold, rejects rivals) |
+| `PUT` | `/api/offers/{publicId}/reject` | 🔒 Owner/Seeker | Reject offer or withdraw |
+
+---
+
+### Dashboards
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/dashboard/owner` | 🔒 Owner | Aggregated stats: total/available properties & offers |
+| `GET` | `/api/dashboard/seeker` | 🔒 Seeker | Aggregated stats: total offers, pending, countered, accepted, rejected |
 
 > 🛡️ All `{publicId}` route parameters are **GUIDs**, never internal integer IDs.
 
@@ -430,16 +481,34 @@ The negotiation engine enforces a **strict 2-round counter-offer limit** at the 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending : Seeker submits initial offer\n(Round 1)
+    [*] --> Pending : Seeker submits initial offer (Round 1)
 
-    Pending --> Countered : Owner counters\n(Round 2 — final round)
-    Pending --> Accepted : Either party accepts
-    Pending --> Rejected : Either party rejects
+    state Pending {
+        direction LR
+        [*] --> Round1Actions
+        note right of Round1Actions
+            Owner: accept, counter, reject
+            Seeker: reject (withdraw only)
+        end note
+    }
+
+    Pending --> Countered : Owner counters (Round 2 — final round)
+    Pending --> Accepted : Owner accepts
+    Pending --> Rejected : Owner rejects OR Seeker withdraws
+
+    state Countered {
+        direction LR
+        [*] --> Round2Actions
+        note right of Round2Actions
+            Seeker: accept, reject
+            Owner: NO actions allowed
+        end note
+    }
 
     Countered --> Accepted : Seeker accepts counter
     Countered --> Rejected : Seeker rejects counter
 
-    Accepted --> [*] : Deal closed ✅
+    Accepted --> [*] : Property marked Sold atomically ✅
     Rejected --> [*] : Negotiation ends ❌
 
     note right of Countered
@@ -452,10 +521,15 @@ stateDiagram-v2
 
 ### How it Works
 
-1. **Round 1 — Initial Offer:** Seeker submits a price on a property → `Offer` created with `Status = Pending`, `RoundNumber = 1`
-2. **Round 2 — Counter-Offer:** Owner may counter once → `Status = Countered`, `RoundNumber = 2`
-3. **Resolution:** Seeker must `Accept` or `Reject` the counter. No further counters allowed.
-4. **Audit Trail:** Every state transition writes an immutable `NegotiationHistory` record with the actor, price at that moment, and timestamp.
+1. **Round 1 — Initial Offer:** Seeker submits an offer on an Available property → `Offer` created with `Status = Pending`, `RoundNumber = 1`. Owner may accept, counter, or reject. Seeker may withdraw (reject).
+2. **Round 2 — Counter-Offer (Final):** Owner counters once → `Status = Countered`, `RoundNumber = 2`. Owner has no further actions.
+3. **Resolution:** Seeker must `Accept` or `Reject` the counter. No further counters are permitted.
+4. **Atomic Acceptance:** When an offer is accepted:
+   - Target offer `Status` becomes `Accepted`.
+   - Property `Status` atomically transitions to `Sold`.
+   - All competing pending/countered offers on the same property are bulk-rejected.
+   - An immutable audit row is logged into `NegotiationHistory`.
+5. **Audit Trail:** Every state transition (`Submitted`, `Countered`, `Accepted`, `Rejected`) writes an immutable `NegotiationHistory` record with the actor, price at that moment, round number, and timestamp.
 
 ```csharp
 // Domain invariant enforced inside Offer entity

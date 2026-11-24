@@ -4,8 +4,7 @@ namespace Makanak.Domain.Entities;
 
 /// <summary>
 /// Immutable audit record capturing every negotiation action on an <see cref="Offer"/> (FR-09).
-/// Does NOT extend BaseEntity — history rows are append-only and never referenced externally by PublicId.
-/// Uses its own Guid Id as PK for simplicity; never referenced by API routes.
+/// History rows are append-only and never updated or deleted (DeleteBehavior.Restrict).
 /// </summary>
 public class NegotiationHistory
 {
@@ -21,6 +20,8 @@ public class NegotiationHistory
 
     public decimal ProposedPrice { get; private set; }
 
+    public int RoundNumber { get; private set; } = 1;
+
     public DateTime Timestamp { get; private set; } = DateTime.UtcNow;
 
     // Navigation Properties
@@ -34,6 +35,7 @@ public class NegotiationHistory
         long actionByUserId,
         NegotiationActionType actionType,
         decimal proposedPrice,
+        int roundNumber,
         DateTime? timestamp = null)
     {
         return new NegotiationHistory
@@ -42,6 +44,7 @@ public class NegotiationHistory
             ActionByUserId = actionByUserId,
             ActionType = actionType,
             ProposedPrice = proposedPrice,
+            RoundNumber = roundNumber,
             Timestamp = timestamp ?? DateTime.UtcNow
         };
     }

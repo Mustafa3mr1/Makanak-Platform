@@ -1,6 +1,8 @@
+using Makanak.Application.Common.Models;
 using Makanak.Application.DTOs.Auth;
 using Makanak.Application.DTOs.Properties;
 using Makanak.Application.DTOs.Offers;
+using Makanak.Domain.Enums;
 
 namespace Makanak.Application.Common.Interfaces;
 
@@ -10,34 +12,47 @@ public interface IAuthService
     Task<AuthResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default);
 }
 
+public interface IUserService
+{
+    Task<UserProfileDto> GetCurrentUserProfileAsync(long userId, CancellationToken cancellationToken = default);
+    Task<UserProfileDto> UpdateUserProfileAsync(long userId, UpdateUserProfileRequestDto request, CancellationToken cancellationToken = default);
+}
+
 public interface IPropertyService
 {
-    /// <param name="ownerInternalId">Resolved from JWT claims — internal long Id of the authenticated owner.</param>
-    Task<PropertyDto> CreatePropertyAsync(CreatePropertyRequestDto request, long ownerInternalId, CancellationToken cancellationToken = default);
+    Task<PropertyDetailsDto> CreatePropertyAsync(CreatePropertyRequestDto request, long ownerInternalId, CancellationToken cancellationToken = default);
+    Task<PropertyDetailsDto?> GetPropertyByPublicIdAsync(Guid publicId, long? callerInternalId = null, CancellationToken cancellationToken = default);
+    Task<PagedResult<PropertyListItemDto>> GetPropertiesAsync(PropertyFilterQueryDto filter, CancellationToken cancellationToken = default);
+    Task<PagedResult<PropertyListItemDto>> GetOwnerPropertiesAsync(long ownerInternalId, PropertyStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<PropertyDetailsDto> UpdatePropertyAsync(Guid publicId, UpdatePropertyRequestDto request, long ownerInternalId, CancellationToken cancellationToken = default);
+    Task SoftDeletePropertyAsync(Guid publicId, long ownerInternalId, CancellationToken cancellationToken = default);
 
-    /// <param name="publicId">External Guid from API route — never the internal Id.</param>
-    Task<PropertyDto?> GetPropertyByPublicIdAsync(Guid publicId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PropertyImageItemDto>> AddImagesAsync(
+        Guid propertyPublicId,
+        IReadOnlyList<(Stream Stream, string Extension)> files,
+        long ownerInternalId,
+        CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PropertyDto>> GetAllPropertiesAsync(CancellationToken cancellationToken = default);
+    Task<PropertyImageItemDto> SetPrimaryImageAsync(
+        Guid propertyPublicId,
+        Guid imagePublicId,
+        long ownerInternalId,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteImageAsync(
+        Guid propertyPublicId,
+        Guid imagePublicId,
+        long ownerInternalId,
+        CancellationToken cancellationToken = default);
 }
 
 public interface INegotiationService
 {
-    /// <param name="seekerInternalId">Internal long Id resolved from JWT claims.</param>
-    Task<OfferDto> CreateInitialOfferAsync(CreateOfferRequestDto request, long seekerInternalId, CancellationToken cancellationToken = default);
-
-    /// <param name="offerPublicId">External Guid from API route.</param>
-    /// <param name="actorInternalId">Internal long Id resolved from JWT claims.</param>
-    Task<OfferDto> CounterOfferAsync(Guid offerPublicId, CounterOfferRequestDto request, long actorInternalId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Atomic Unit of Work transaction:
-    /// 1. Marks target offer Accepted.
-    /// 2. Marks Property Unavailable.
-    /// 3. Bulk-rejects all competing Pending/Countered offers for this property.
-    /// 4. Appends NegotiationHistory records for all actions (FR-09).
-    /// </summary>
-    Task<OfferDto> AcceptOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
-
-    Task<OfferDto> RejectOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
+    Task<OfferDetailsDto> CreateInitialOfferAsync(CreateOfferRequestDto request, long seekerInternalId, CancellationToken cancellationToken = default);
+    Task<OfferDetailsDto> CounterOfferAsync(Guid offerPublicId, CounterOfferRequestDto request, long actorInternalId, CancellationToken cancellationToken = default);
+    Task<OfferDetailsDto> AcceptOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
+    Task<OfferDetailsDto> RejectOfferAsync(Guid offerPublicId, long actorInternalId, CancellationToken cancellationToken = default);
+    Task<OfferDetailsDto> GetOfferDetailsAsync(Guid offerPublicId, long callerInternalId, CancellationToken cancellationToken = default);
+    Task<PagedResult<OfferListItemDto>> GetSeekerOffersAsync(long seekerInternalId, OfferStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<PagedResult<OfferListItemDto>> GetOwnerIncomingOffersAsync(long ownerInternalId, OfferStatus? status, Guid? propertyPublicId, int page, int pageSize, CancellationToken cancellationToken = default);
 }

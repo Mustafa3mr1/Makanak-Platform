@@ -24,9 +24,21 @@ public class PropertyImage : BaseEntity
         return new PropertyImage
         {
             PropertyId = propertyId,
-            ImageUrl = imageUrl,
+            ImageUrl = imageUrl.Trim(),
             IsPrimary = isPrimary
         };
+    }
+
+    public void MarkAsPrimary()
+    {
+        IsPrimary = true;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void DemoteFromPrimary()
+    {
+        IsPrimary = false;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     private PropertyImage() { }

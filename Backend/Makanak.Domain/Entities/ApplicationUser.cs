@@ -6,6 +6,7 @@ namespace Makanak.Domain.Entities;
 /// <summary>
 /// Application user extending IdentityUser&lt;long&gt; with a long primary key for clustering.
 /// PublicId (Guid) is exposed via the API surface; the numeric Id is used for all FK joins.
+/// FullName is required (max 100). PhoneNumber is optional (from IdentityUser).
 /// </summary>
 public class ApplicationUser : IdentityUser<long>
 {
@@ -27,7 +28,7 @@ public class ApplicationUser : IdentityUser<long>
     /// Domain factory for creating a new ApplicationUser.
     /// ASP.NET Core Identity will assign the numeric Id on insert.
     /// </summary>
-    public static ApplicationUser Create(string email, string fullName, UserType userType)
+    public static ApplicationUser Create(string email, string fullName, UserType userType, string? phoneNumber = null)
     {
         return new ApplicationUser
         {
@@ -36,8 +37,15 @@ public class ApplicationUser : IdentityUser<long>
             NormalizedEmail = email.ToUpperInvariant(),
             NormalizedUserName = email.ToUpperInvariant(),
             FullName = fullName,
-            UserType = userType
+            UserType = userType,
+            PhoneNumber = phoneNumber
         };
+    }
+
+    public void UpdateProfile(string fullName, string? phoneNumber)
+    {
+        FullName = fullName;
+        PhoneNumber = phoneNumber;
     }
 
     // EF Core parameterless constructor.

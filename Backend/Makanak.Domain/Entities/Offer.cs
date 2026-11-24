@@ -16,18 +16,19 @@ public class Offer : BaseEntity
     public long PropertyId { get; private set; }
     public long SeekerId { get; private set; }
 
-    public decimal CurrentPrice { get; private set; }
+    /// <summary>Initial offer price submitted by seeker in Round 1.</summary>
+    public decimal InitialPrice { get; private set; }
+
+    /// <summary>Counter-offer price submitted by owner in Round 2 (nullable).</summary>
+    public decimal? CounterPrice { get; private set; }
 
     public OfferStatus Status { get; private set; } = OfferStatus.Pending;
 
-    /// <summary>Tracks counter-offer iterations (Max: 2).</summary>
-    public int RoundCount { get; private set; } = 0;
+    /// <summary>Current round number (Round 1: initial offer, Round 2: counter-offer).</summary>
+    public int RoundNumber { get; private set; } = 1;
 
     /// <summary>Concurrency token for optimistic locking (NFR-03).</summary>
     public byte[] RowVersion { get; private set; } = Array.Empty<byte>();
-
-    public DateTime CreatedAtUtc { get; private set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAtUtc { get; private set; }
 
     // Navigation Properties
     public virtual Property Property { get; private set; } = null!;
@@ -35,10 +36,6 @@ public class Offer : BaseEntity
 
     // ── Factory ──────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Domain factory — only valid way to open a new negotiation offer.
-    /// Validates price and links to aggregate root IDs.
-    /// </summary>
     public static Offer Create(long propertyId, long seekerId, decimal initialPrice)
     {
         if (initialPrice <= 0)
@@ -48,7 +45,10 @@ public class Offer : BaseEntity
         {
             PropertyId = propertyId,
             SeekerId = seekerId,
-            CurrentPrice = initialPrice
+            InitialPrice = initialPrice,
+            CounterPrice = null,
+            RoundNumber = 1,
+            Status = OfferStatus.Pending
         };
     }
 
@@ -57,21 +57,21 @@ public class Offer : BaseEntity
     /// <summary>Submits a counter-offer, enforcing the strict 2-round negotiation limit.</summary>
     public void Counter(decimal counterPrice)
     {
-        if (Status != OfferStatus.Pending && Status != OfferStatus.Countered)
+        if (RoundNumber >= MaxNegotiationRounds)
+            throw new NegotiationLimitExceededException(
+                $"Negotiation round limit of {MaxNegotiationRounds} has been reached for offer {PublicId}.");
+
+        if (Status != OfferStatus.Pending)
             throw new InvalidOfferOperationException(
-                $"Cannot counter an offer with status '{Status}'. Only Pending or Countered offers can be countered.");
+                $"Cannot counter an offer with status '{Status}'. Only Pending offers can be countered.");
 
         if (counterPrice <= 0)
             throw new InvalidOfferOperationException("Counter offer price must be greater than zero.");
 
-        if (RoundCount >= MaxNegotiationRounds)
-            throw new NegotiationLimitExceededException(
-                $"Negotiation round limit of {MaxNegotiationRounds} has been reached for offer {PublicId}.");
-
-        RoundCount++;
-        CurrentPrice = counterPrice;
+        RoundNumber++;
+        CounterPrice = counterPrice;
         Status = OfferStatus.Countered;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>Marks the offer as Accepted.</summary>
@@ -82,7 +82,7 @@ public class Offer : BaseEntity
                 $"Cannot accept offer with status '{Status}'. Only Pending or Countered offers can be accepted.");
 
         Status = OfferStatus.Accepted;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>Marks the offer as Rejected.</summary>
@@ -92,7 +92,54 @@ public class Offer : BaseEntity
             throw new InvalidOfferOperationException("Cannot reject an offer that has already been accepted.");
 
         Status = OfferStatus.Rejected;
-        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Pure domain function: calculates the list of allowed actions ("accept" | "counter" | "reject")
+    /// for a given caller role and property state.
+    /// This is the single source of truth for UI actions.
+    /// </summary>
+    public IReadOnlyList<string> GetAllowedActions(string callerRole, PropertyStatus propertyStatus, bool isPropertyDeleted = false)
+    {
+        // If property is Sold or soft-deleted, no actions on any offer
+        if (isPropertyDeleted || propertyStatus == PropertyStatus.Sold)
+            return Array.Empty<string>();
+
+        // If offer is terminal (Accepted or Rejected), no actions
+        if (Status == OfferStatus.Accepted || Status == OfferStatus.Rejected)
+            return Array.Empty<string>();
+
+        bool isOwner = string.Equals(callerRole, "Owner", StringComparison.OrdinalIgnoreCase);
+        bool isSeeker = string.Equals(callerRole, "Seeker", StringComparison.OrdinalIgnoreCase);
+
+        // Pending (Round 1)
+        if (Status == OfferStatus.Pending)
+        {
+            if (isOwner)
+            {
+                return new[] { "accept", "counter", "reject" };
+            }
+            if (isSeeker)
+            {
+                return new[] { "reject" }; // Withdraw
+            }
+        }
+
+        // Countered (Round 2, FINAL)
+        if (Status == OfferStatus.Countered)
+        {
+            if (isSeeker)
+            {
+                return new[] { "accept", "reject" };
+            }
+            if (isOwner)
+            {
+                return Array.Empty<string>(); // Owner has no actions on counter
+            }
+        }
+
+        return Array.Empty<string>();
     }
 
     // EF Core parameterless constructor for hydration.

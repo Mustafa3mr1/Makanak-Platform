@@ -1,0 +1,6 @@
+namespace Makanak.Domain.Exceptions;
+
+public sealed class NotFoundException : DomainException
+{
+    public NotFoundException(string message) : base(message, "not_found") { }
+}

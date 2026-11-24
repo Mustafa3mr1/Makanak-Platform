@@ -4,7 +4,7 @@ namespace Makanak.Domain.Entities;
 /// Hybrid ID base entity.
 /// - <see cref="Id"/>       : Internal clustered PK (long) — used only inside DB for FK joins and indexes.
 /// - <see cref="PublicId"/> : External GUID — used in every API route/DTO; prevents IDOR attacks.
-/// No external NuGet dependency; EF Core index is configured via IEntityTypeConfiguration.
+/// Timestamps are maintained automatically in SaveChanges.
 /// </summary>
 public abstract class BaseEntity
 {
@@ -17,7 +17,12 @@ public abstract class BaseEntity
     /// </summary>
     public Guid PublicId { get; private set; } = Guid.NewGuid();
 
+    /// <summary>Creation timestamp in UTC.</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Last updated timestamp in UTC.</summary>
+    public DateTime? UpdatedAt { get; set; }
+
     // EF Core parameterless constructor support (for hydration from DB).
     protected BaseEntity() { }
 }
-

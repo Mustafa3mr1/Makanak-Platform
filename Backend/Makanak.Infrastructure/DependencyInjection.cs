@@ -68,13 +68,18 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddSingleton<JwtTokenService>();
 
-        // Repositories are accessed solely through Unit of Work (Scope mismatch eliminated)
+        // File Storage Service
+        services.AddScoped<IFileStorageService, LocalDiskFileStorageService>();
+
+        // Repositories are accessed solely through Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // Application Services
         services.AddScoped<INegotiationService, NegotiationService>();
         services.AddScoped<IPropertyService, PropertyService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IDashboardService, DashboardService>();
 
         return services;
     }

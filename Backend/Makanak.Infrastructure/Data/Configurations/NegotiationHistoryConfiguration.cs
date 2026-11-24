@@ -13,6 +13,7 @@ public sealed class NegotiationHistoryConfiguration : IEntityTypeConfiguration<N
 
         builder.Property(nh => nh.ActionType).IsRequired();
         builder.Property(nh => nh.ProposedPrice).HasPrecision(18, 2).IsRequired();
+        builder.Property(nh => nh.RoundNumber).IsRequired();
         builder.Property(nh => nh.Timestamp).IsRequired();
 
         // Immutable audit log — no cascade delete from Offer
@@ -28,4 +29,3 @@ public sealed class NegotiationHistoryConfiguration : IEntityTypeConfiguration<N
                .OnDelete(DeleteBehavior.Restrict);
     }
 }
-

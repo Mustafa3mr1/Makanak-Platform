@@ -9,8 +9,8 @@ namespace Makanak.Infrastructure.Identity;
 
 /// <summary>
 /// Generates signed JWT tokens for authenticated users.
-/// Embeds both the internal long Id (sub claim) and the PublicId (public_id claim)
-/// so the API layer can resolve the user's identity from claims without hitting the DB.
+/// Embeds internal long Id (sub claim), PublicId (public_id claim),
+/// and standard role claim (ClaimTypes.Role) matching UserType.
 /// </summary>
 public sealed class JwtTokenService
 {
@@ -41,6 +41,7 @@ public sealed class JwtTokenService
             new Claim("public_id", user.PublicId.ToString()),
             new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
             new Claim(ClaimTypes.Name, user.FullName),
+            new Claim(ClaimTypes.Role, user.UserType.ToString()),
             new Claim("user_type", user.UserType.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(JwtRegisteredClaimNames.Iat,
@@ -60,4 +61,3 @@ public sealed class JwtTokenService
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 }
-

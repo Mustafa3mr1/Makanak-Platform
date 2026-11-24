@@ -18,10 +18,17 @@ public sealed class OfferConfiguration : IEntityTypeConfiguration<Offer>
 
         builder.Property(o => o.PublicId).IsRequired();
 
+        // ── Filtered Unique Index: Only one active offer per seeker per property ─
+        builder.HasIndex(o => new { o.PropertyId, o.SeekerId })
+               .IsUnique()
+               .HasFilter("[Status] IN (1, 2)")
+               .HasDatabaseName("IX_Offers_Active_Property_Seeker");
+
         // ── Columns ──────────────────────────────────────────────────────────────
-        builder.Property(o => o.CurrentPrice).HasPrecision(18, 2).IsRequired();
+        builder.Property(o => o.InitialPrice).HasPrecision(18, 2).IsRequired();
+        builder.Property(o => o.CounterPrice).HasPrecision(18, 2);
         builder.Property(o => o.Status).IsRequired();
-        builder.Property(o => o.RoundCount).IsRequired();
+        builder.Property(o => o.RoundNumber).IsRequired();
 
         // NFR-03: RowVersion for optimistic concurrency
         builder.Property(o => o.RowVersion).IsRowVersion();
@@ -30,7 +37,7 @@ public sealed class OfferConfiguration : IEntityTypeConfiguration<Offer>
         builder.HasOne(o => o.Property)
                .WithMany(p => p.Offers)
                .HasForeignKey(o => o.PropertyId)
-               .OnDelete(DeleteBehavior.Cascade);
+               .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(o => o.Seeker)
                .WithMany(u => u.SubmittedOffers)
@@ -38,4 +45,3 @@ public sealed class OfferConfiguration : IEntityTypeConfiguration<Offer>
                .OnDelete(DeleteBehavior.Restrict);
     }
 }
-

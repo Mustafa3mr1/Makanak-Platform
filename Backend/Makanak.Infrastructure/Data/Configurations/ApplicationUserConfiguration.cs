@@ -19,8 +19,11 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
                .IsRequired();
 
         builder.Property(u => u.FullName)
-               .HasMaxLength(150)
+               .HasMaxLength(100)
                .IsRequired();
+
+        builder.Property(u => u.PhoneNumber)
+               .HasMaxLength(20);
 
         builder.Property(u => u.UserType)
                .IsRequired();
@@ -29,4 +32,3 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
                .IsRequired();
     }
 }
-

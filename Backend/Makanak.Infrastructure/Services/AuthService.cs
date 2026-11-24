@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Makanak.Application.Common.Interfaces;
 using Makanak.Application.DTOs.Auth;
 using Makanak.Domain.Entities;
+using Makanak.Domain.Enums;
 using Makanak.Domain.Exceptions;
 using Makanak.Infrastructure.Identity;
 
@@ -10,7 +11,6 @@ namespace Makanak.Infrastructure.Services;
 /// <summary>
 /// Authentication service. Issues real signed JWTs via JwtTokenService.
 /// No DbContext injection — uses ASP.NET Core Identity's UserManager only.
-/// Throws <see cref="AuthException"/> for auth failures (not InvalidOfferOperationException).
 /// </summary>
 public sealed class AuthService : IAuthService
 {
@@ -25,11 +25,19 @@ public sealed class AuthService : IAuthService
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
     {
+        // Enforce: only Owner or Seeker can register via public API
+        if (request.UserType != UserType.Owner && request.UserType != UserType.Seeker)
+            throw new ForbiddenActionException("Self-registration as Admin is strictly prohibited.");
+
         var existingUser = await _userManager.FindByEmailAsync(request.Email);
         if (existingUser is not null)
             throw new AuthException($"An account with email '{request.Email}' already exists.");
 
-        var user = ApplicationUser.Create(request.Email, request.FullName, request.UserType);
+        var user = ApplicationUser.Create(
+            email: request.Email,
+            fullName: request.FullName,
+            userType: request.UserType,
+            phoneNumber: request.PhoneNumber);
 
         var result = await _userManager.CreateAsync(user, request.Password);
         if (!result.Succeeded)
@@ -39,7 +47,14 @@ public sealed class AuthService : IAuthService
         }
 
         var (token, expiresAt) = _jwtTokenService.GenerateToken(user);
-        return new AuthResponseDto(user.PublicId, user.FullName, user.Email!, user.UserType, token, expiresAt);
+        var userProfile = new UserProfileDto(
+            user.PublicId,
+            user.FullName,
+            user.Email!,
+            user.UserType,
+            user.PhoneNumber);
+
+        return new AuthResponseDto(token, expiresAt, userProfile);
     }
 
     public async Task<AuthResponseDto> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
@@ -56,6 +71,13 @@ public sealed class AuthService : IAuthService
             throw new AuthException(invalidCredentialsMessage);
 
         var (token, expiresAt) = _jwtTokenService.GenerateToken(user);
-        return new AuthResponseDto(user.PublicId, user.FullName, user.Email!, user.UserType, token, expiresAt);
+        var userProfile = new UserProfileDto(
+            user.PublicId,
+            user.FullName,
+            user.Email!,
+            user.UserType,
+            user.PhoneNumber);
+
+        return new AuthResponseDto(token, expiresAt, userProfile);
     }
 }

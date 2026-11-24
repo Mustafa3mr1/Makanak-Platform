@@ -35,12 +35,23 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public async Task<IDbTransactionProxy> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            return new NoOpTransactionProxy();
+        }
+
         var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         return new DbTransactionProxy(transaction);
     }
 
     public async Task ExecuteTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)
     {
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            await operation();
+            return;
+        }
+
         // Uses EF Core's execution strategy to handle transient SQL Server failures with retry.
         var strategy = _context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
@@ -58,4 +69,11 @@ public sealed class UnitOfWork : IUnitOfWork
             }
         });
     }
+}
+
+internal sealed class NoOpTransactionProxy : IDbTransactionProxy
+{
+    public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

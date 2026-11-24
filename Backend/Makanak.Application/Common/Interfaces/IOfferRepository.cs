@@ -1,4 +1,7 @@
+using Makanak.Application.Common.Models;
+using Makanak.Application.DTOs.Offers;
 using Makanak.Domain.Entities;
+using Makanak.Domain.Enums;
 
 namespace Makanak.Application.Common.Interfaces;
 
@@ -10,15 +13,13 @@ namespace Makanak.Application.Common.Interfaces;
 public interface IOfferRepository
 {
     Task<Offer?> GetByPublicIdAsync(Guid publicId, CancellationToken cancellationToken = default);
-    Task<Offer?> GetByPublicIdWithPropertyAsync(Guid publicId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Returns all Pending or Countered offers for a property (by internal long FK),
-    /// excluding a specific offer by its internal long Id.
-    /// Used during offer acceptance to bulk-reject competing offers.
-    /// </summary>
+    Task<Offer?> GetByPublicIdWithDetailsAsync(Guid publicId, CancellationToken cancellationToken = default);
+    Task<bool> HasActiveOfferAsync(long propertyId, long seekerId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Offer>> GetPendingOffersByPropertyIdAsync(long propertyId, long excludeOfferId, CancellationToken cancellationToken = default);
-
+    Task<PagedResult<OfferListItemDto>> GetSeekerOffersAsync(long seekerId, OfferStatus? statusFilter, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<PagedResult<OfferListItemDto>> GetOwnerIncomingOffersAsync(long ownerId, OfferStatus? statusFilter, Guid? propertyPublicId, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<(int PendingOffers, int TotalOffers)> GetOwnerOfferCountsAsync(long ownerId, CancellationToken cancellationToken = default);
+    Task<DTOs.Dashboard.SeekerDashboardDto> GetSeekerDashboardCountsAsync(long seekerId, CancellationToken cancellationToken = default);
     Task AddAsync(Offer offer, CancellationToken cancellationToken = default);
     void Update(Offer offer);
 }
